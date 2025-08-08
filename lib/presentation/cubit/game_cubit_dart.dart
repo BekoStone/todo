@@ -11,7 +11,7 @@ import 'package:puzzle_box/domain/entities/game_session_entity.dart';
 import 'package:puzzle_box/domain/entities/power_up_entity.dart';
 import 'package:puzzle_box/domain/usecases/achievement_usecases_dart.dart';
 import '../../domain/usecases/game_usecases.dart';
-import '../../core/constants/game_constants.dart';
+import '../../core/constants/game_constants.dart' hide GameConstants;
 
 /// Game state enumeration
 enum GameStateStatus {

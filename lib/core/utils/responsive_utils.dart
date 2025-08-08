@@ -1,8 +1,62 @@
 import 'package:flutter/material.dart';
 import '../theme/responsive_config.dart';
-import '../constants/game_constants.dart';
+import '../constants/app_constants.dart';
 
 class ResponsiveUtils {
+  // Static screen size cache for performance
+  static Size? _cachedScreenSize;
+  static double? _cachedPixelRatio;
+  
+  /// Initialize screen size cache (call this in main.dart)
+  static void initialize(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    _cachedScreenSize = mediaQuery.size;
+    _cachedPixelRatio = mediaQuery.devicePixelRatio;
+  }
+  
+  /// Get current screen size with fallback
+  static Size _getScreenSize(BuildContext? context) {
+    if (context != null) {
+      return MediaQuery.of(context).size;
+    }
+    return _cachedScreenSize ?? const Size(375, 812); // iPhone 12 fallback
+  }
+  
+  /// Width percentage - wp(50) = 50% of screen width
+  static double wp(double percentage, [BuildContext? context]) {
+    final screenSize = _getScreenSize(context);
+    return (percentage / 100) * screenSize.width;
+  }
+  
+  /// Height percentage - hp(50) = 50% of screen height  
+  static double hp(double percentage, [BuildContext? context]) {
+    final screenSize = _getScreenSize(context);
+    return (percentage / 100) * screenSize.height;
+  }
+  
+  /// Scaled pixels - sp(16) = 16dp with device scaling applied
+  static double sp(double fontSize, [BuildContext? context]) {
+    if (context != null) {
+      final mediaQuery = MediaQuery.of(context);
+      final textScaleFactor = mediaQuery.textScaleFactor.clamp(0.8, 1.4);
+      final deviceScale = _getDeviceScale(context);
+      return fontSize * deviceScale * textScaleFactor;
+    }
+    
+    // Fallback without context
+    final pixelRatio = _cachedPixelRatio ?? 2.0;
+    final baseScale = pixelRatio > 3.0 ? 1.2 : 1.0; // High DPI adjustment
+    return fontSize * baseScale;
+  }
+  
+  /// Get device scale factor
+  static double _getDeviceScale(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth > 900) return 1.4; // Desktop
+    if (screenWidth > 600) return 1.2; // Tablet
+    return 1.0; // Mobile
+  }
+
   // Calculate optimal game layout based on screen size
   static GameLayout calculateGameLayout(BuildContext context) {
     final config = ResponsiveConfig.getLayoutConfig(context);
@@ -24,7 +78,7 @@ class ResponsiveUtils {
     
     // Ensure grid fits properly
     final maxGridSize = gridAreaWidth < gridAreaHeight ? gridAreaWidth : gridAreaHeight;
-    final adjustedCellSize = (maxGridSize - (GameConstants.gridSize - 1) * gridConfig.spacing) / GameConstants.gridSize;
+    final adjustedCellSize = (maxGridSize - (AppConstants.gridSize - 1) * gridConfig.spacing) / AppConstants.gridSize;
     
     return GameLayout(
       screenSize: config.screenSize,
@@ -52,6 +106,8 @@ class ResponsiveUtils {
         return baseValue * 1.2;
       case DeviceType.desktop:
         return baseValue * 1.4;
+      default:
+        return baseValue;
     }
   }
   
@@ -88,7 +144,7 @@ class ResponsiveUtils {
   // Calculate safe padding considering notches and navigation
   static EdgeInsets getSafePadding(BuildContext context, {EdgeInsets? additional}) {
     final mediaQuery = MediaQuery.of(context);
-    final basePadding = EdgeInsets.only(
+    EdgeInsets basePadding = EdgeInsets.only(
       top: mediaQuery.viewPadding.top,
       bottom: mediaQuery.viewPadding.bottom,
       left: ResponsiveConfig.getPadding(context),
@@ -96,7 +152,12 @@ class ResponsiveUtils {
     );
     
     if (additional != null) {
-      return basePadding.add(additional);
+      return EdgeInsets.only(
+        top: basePadding.top + additional.top,
+        bottom: basePadding.bottom + additional.bottom,
+        left: basePadding.left + additional.left,
+        right: basePadding.right + additional.right,
+      );
     }
     
     return basePadding;
@@ -134,52 +195,89 @@ class ResponsiveUtils {
   }) {
     var duration = baseDuration;
     
-    // Scale based on device type (assume mobile might need slightly faster)
-    final deviceType = ResponsiveConfig.getDeviceType(context);
-    if (deviceType == DeviceType.mobile) {
-      duration = Duration(milliseconds: (duration.inMilliseconds * 0.9).round());
-    }
-    
-    // Respect accessibility settings
+    // Scale animation duration for accessibility
     if (respectAccessibility) {
       final mediaQuery = MediaQuery.of(context);
-      final reduceAnimations = mediaQuery.disableAnimations;
-      if (reduceAnimations) {
-        return Duration(milliseconds: (duration.inMilliseconds * 0.3).round());
+      final accessibilityFeatures = mediaQuery.accessibleNavigation;
+      if (accessibilityFeatures) {
+        duration = Duration(milliseconds: (duration.inMilliseconds * 1.5).round());
       }
     }
     
-    return duration;
-  }
-  
-  // Check if device can handle complex animations
-  static bool canHandleComplexAnimations(BuildContext context) {
-    final deviceType = ResponsiveConfig.getDeviceType(context);
-    final mediaQuery = MediaQuery.of(context);
-    
-    // Disable complex animations for accessibility or low-end devices
-    if (mediaQuery.disableAnimations) return false;
-    if (deviceType == DeviceType.mobile && MediaQuery.of(context).size.width < 375) {
-      return false; // Very small screens
-    }
-    
-    return true;
-  }
-  
-  // Get optimal particle count based on device
-  static int getOptimalParticleCount(BuildContext context) {
+    // Scale for device performance
     final deviceType = ResponsiveConfig.getDeviceType(context);
     switch (deviceType) {
       case DeviceType.mobile:
-        return 10;
+        return duration;
       case DeviceType.tablet:
-        return 15;
+        return Duration(milliseconds: (duration.inMilliseconds * 0.9).round());
       case DeviceType.desktop:
-        return 20;
+        return Duration(milliseconds: (duration.inMilliseconds * 0.8).round());
+      default:
+        return duration;
+    }
+  }
+
+  /// Get responsive breakpoint
+  static ResponsiveBreakpoint getBreakpoint(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth >= 1200) return ResponsiveBreakpoint.desktop;
+    if (screenWidth >= 600) return ResponsiveBreakpoint.tablet;
+    return ResponsiveBreakpoint.mobile;
+  }
+
+  /// Get game configuration for Flame game initialization
+  static GameConfig getGameConfig(Size screenSize) {
+    // Calculate device type based on screen size
+    final deviceType = screenSize.width >= 1200 
+        ? DeviceType.desktop 
+        : screenSize.width >= 600 
+            ? DeviceType.tablet 
+            : DeviceType.mobile;
+    
+    // Calculate optimal grid size based on available space
+    final availableSize = screenSize.width < screenSize.height 
+        ? screenSize.width 
+        : screenSize.height;
+    
+    final gridSize = AppConstants.gridSize;
+    final cellSize = (availableSize * 0.6) / gridSize; // Use 60% of available space
+    
+    return GameConfig(
+      gridSize: gridSize,
+      cellSize: cellSize.clamp(28.0, 60.0),
+      deviceType: deviceType,
+      screenSize: screenSize,
+    );
+  }
+
+  // Build responsive widget
+  static Widget buildResponsiveWidget({
+    required BuildContext context,
+    required Widget mobile,
+    Widget? tablet,
+    Widget? desktop,
+  }) {
+    final breakpoint = getBreakpoint(context);
+    switch (breakpoint) {
+      case ResponsiveBreakpoint.mobile:
+        return mobile;
+      case ResponsiveBreakpoint.tablet:
+        return tablet ?? mobile;
+      case ResponsiveBreakpoint.desktop:
+        return desktop ?? tablet ?? mobile;
     }
   }
 }
 
+/// Responsive breakpoint enumeration
+enum ResponsiveBreakpoint {
+  mobile,
+  tablet,
+  desktop,
+}
+
+/// Game layout configuration
 class GameLayout {
   final Size screenSize;
   final DeviceType deviceType;
@@ -189,7 +287,7 @@ class GameLayout {
   final double powerUpHeight;
   final double sideMargin;
   final bool isLandscape;
-  
+
   const GameLayout({
     required this.screenSize,
     required this.deviceType,
@@ -200,49 +298,34 @@ class GameLayout {
     required this.sideMargin,
     required this.isLandscape,
   });
-  
-  // Calculate grid position on screen
-  Offset get gridPosition {
-    final gridSize = gridConfig.totalGridSize;
-    final x = (screenSize.width - gridSize) / 2;
-    final y = hudHeight + ((screenSize.height - hudHeight - slotsHeight - powerUpHeight - gridSize) / 2);
-    
-    return Offset(x, y);
-  }
-  
-  // Calculate slots position
-  Offset get slotsPosition {
-    return Offset(
-      sideMargin,
-      screenSize.height - slotsHeight - ResponsiveUtils.scale(null, 20),
-    );
-  }
-  
-  // Calculate power-up panel position
-  Offset get powerUpPosition {
-    return Offset(
-      sideMargin,
-      screenSize.height - slotsHeight - powerUpHeight - ResponsiveUtils.scale(null, 10),
-    );
-  }
 }
 
+/// Slot layout configuration
 class SlotLayout {
   final Size slotSize;
   final double spacing;
   final double totalWidth;
   final double centerOffset;
-  
+
   const SlotLayout({
     required this.slotSize,
     required this.spacing,
     required this.totalWidth,
     required this.centerOffset,
   });
-  
-  // Get position for slot at index
-  Offset getSlotPosition(int index) {
-    final x = centerOffset + (index * (slotSize.width + spacing));
-    return Offset(x, 0);
-  }
+}
+
+/// Game configuration for Flame game
+class GameConfig {
+  final int gridSize;
+  final double cellSize;
+  final DeviceType deviceType;
+  final Size screenSize;
+
+  const GameConfig({
+    required this.gridSize,
+    required this.cellSize,
+    required this.deviceType,
+    required this.screenSize,
+  });
 }

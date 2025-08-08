@@ -164,8 +164,8 @@ class AchievementUseCases {
         // Award coins for achievement
         await _playerRepository.updatePlayerStats(
           currentStats.copyWith(
-            totalCoins: currentStats.totalCoins + achievement.coinReward,
-            achievementsUnlocked: currentStats.achievementsUnlocked + 1,
+            totalCoinsEarned: currentStats.totalCoinsEarned + achievement.coinReward,
+              unlockedAchievements: currentStats.unlockedAchievements + 1,
           ),
         );
 

@@ -6,6 +6,52 @@ class AppTheme {
   static ThemeData get lightTheme => _buildTheme(AppColors.lightColorScheme);
   static ThemeData get darkTheme => _buildTheme(AppColors.darkColorScheme);
   
+  // MISSING PROPERTIES - ADD THESE FOR COMPILATION
+  /// Primary color - maps to AppColors.primaryBlue
+  static Color get primaryColor => AppColors.primaryBlue;
+  
+  /// Accent color - maps to AppColors.primaryPink  
+  static Color get accentColor => AppColors.primaryPink;
+  
+  /// Surface color - maps to AppColors.surfaceDark
+  static Color get surfaceColor => AppColors.surfaceDark;
+  
+  /// Background color - maps to AppColors.backgroundDark
+  static Color get backgroundColor => AppColors.backgroundDark;
+  
+  /// Error color - maps to AppColors.error
+  static Color get errorColor => AppColors.error;
+  
+  /// Success color - maps to AppColors.success  
+  static Color get successColor => AppColors.success;
+  
+  /// Warning color - maps to AppColors.warning
+  static Color get warningColor => AppColors.warning;
+  
+  /// Info color - maps to AppColors.info
+  static Color get infoColor => AppColors.info;
+  
+  // GRADIENT PROPERTIES
+  /// Primary gradient
+  static LinearGradient get primaryGradient => AppColors.primaryGradient;
+  
+  /// Secondary gradient
+  static LinearGradient get secondaryGradient => AppColors.secondaryGradient;
+  
+  /// Background gradient
+  static LinearGradient get backgroundGradient => AppColors.backgroundGradient;
+  
+  /// Surface gradient for overlays
+  static LinearGradient get surfaceGradient => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      AppColors.surfaceDark,
+      AppColors.surfaceDark.withOpacity(0.95),
+      AppColors.cardDark,
+    ],
+  );
+  
   static ThemeData _buildTheme(ColorScheme colorScheme) {
     final isDark = colorScheme.brightness == Brightness.dark;
     
@@ -148,6 +194,49 @@ class AppTheme {
     );
   }
   
+  // MISSING TEXT STYLES - ADD THESE FOR COMPILATION
+  /// Headline text style
+  static TextStyle get headlineStyle => GoogleFonts.fredoka(
+    fontSize: 28,
+    fontWeight: FontWeight.bold,
+    color: Colors.white,
+    shadows: [
+      const Shadow(
+        offset: Offset(2, 2),
+        blurRadius: 4,
+        color: Colors.black38,
+      ),
+    ],
+  );
+  
+  /// Title text style  
+  static TextStyle get titleStyle => GoogleFonts.fredoka(
+    fontSize: 20,
+    fontWeight: FontWeight.w600,
+    color: Colors.white,
+    shadows: [
+      const Shadow(
+        offset: Offset(1, 1),
+        blurRadius: 2,
+        color: Colors.black26,
+      ),
+    ],
+  );
+  
+  /// Body text style
+  static TextStyle get bodyStyle => GoogleFonts.fredoka(
+    fontSize: 16,
+    fontWeight: FontWeight.w400,
+    color: Colors.white,
+  );
+  
+  /// Button text style
+  static TextStyle get buttonStyle => GoogleFonts.fredoka(
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    color: Colors.white,
+  );
+  
   // Game-specific styles
   static TextStyle get scoreStyle => GoogleFonts.fredoka(
     fontSize: 24,
@@ -201,49 +290,52 @@ class AppTheme {
         colors: isDisabled
             ? [Colors.grey.shade400, Colors.grey.shade600]
             : isPressed
-                ? [color.withOpacity(0.8), color]
-                : [color, color.withOpacity(0.7)],
+                ? [color.withOpacity(0.7), color.withOpacity(0.9)]
+                : [color, color.withOpacity(0.8)],
       ),
       borderRadius: BorderRadius.circular(16),
-      boxShadow: [
-        BoxShadow(
-          color: isDisabled
-              ? Colors.grey.withOpacity(0.3)
-              : color.withOpacity(0.4),
-          blurRadius: isPressed ? 4 : 8,
-          offset: isPressed ? const Offset(1, 2) : const Offset(2, 4),
-        ),
-        if (!isPressed && !isDisabled)
-          const BoxShadow(
-            color: Colors.white24,
-            blurRadius: 1,
-            offset: Offset(-1, -1),
-          ),
-      ],
+      border: Border.all(
+        color: isDisabled 
+            ? Colors.grey.shade500
+            : color.withOpacity(0.8),
+        width: 2,
+      ),
+      boxShadow: isDisabled
+          ? null
+          : [
+              BoxShadow(
+                color: color.withOpacity(0.3),
+                blurRadius: isPressed ? 4 : 8,
+                offset: Offset(0, isPressed ? 2 : 4),
+              ),
+            ],
     );
   }
   
-  static BoxDecoration cardDecoration({
+  // Game background decoration
+  static BoxDecoration get gameBackgroundDecoration => const BoxDecoration(
+    gradient: AppColors.backgroundGradient,
+  );
+  
+  // Overlay decorations
+  static BoxDecoration overlayDecoration({
     Color? color,
-    double borderRadius = 16,
-    bool isElevated = true,
+    double opacity = 0.9,
   }) {
     return BoxDecoration(
-      color: color ?? AppColors.cardDark.withOpacity(0.8),
-      borderRadius: BorderRadius.circular(borderRadius),
+      color: (color ?? AppColors.backgroundDark).withOpacity(opacity),
+      borderRadius: BorderRadius.circular(20),
       border: Border.all(
-        color: Colors.white12,
-        width: 1,
+        color: AppColors.primaryBlue.withOpacity(0.3),
+        width: 2,
       ),
-      boxShadow: isElevated
-          ? [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 12,
-                offset: const Offset(0, 6),
-              ),
-            ]
-          : null,
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.3),
+          blurRadius: 20,
+          offset: const Offset(0, 10),
+        ),
+      ],
     );
   }
 }

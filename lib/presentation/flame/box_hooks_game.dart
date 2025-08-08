@@ -1,9 +1,6 @@
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
-import 'package:flame/events.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:puzzle_box/domain/entities/game_session_entity.dart';
 import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
@@ -22,10 +19,9 @@ class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
   // Dependencies injected via service locator
   late final GameCubit _gameCubit;
   late final PlayerCubit _playerCubit;
-  late final UICubit _uiCubit;
+  late final UICubit _uiCubit; // ✅ FIXED: Consistent naming
   late final AudioService _audioService;
-  late final ResponsiveUtils _responsiveUtils;
-
+  
   // Core game components
   late final GameWorld _gameWorld;
   late final InputSystem _inputSystem;
@@ -35,6 +31,9 @@ class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
   // Game state
   bool _isInitialized = false;
   bool _isPaused = false;
+  
+  // Cache for responsive calculations
+  GameConfig? _currentConfig;
 
   @override
   Future<void> onLoad() async {
@@ -53,9 +52,8 @@ class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
     try {
       _gameCubit = getIt<GameCubit>();
       _playerCubit = getIt<PlayerCubit>();
-      _uiCubit = getIt<UiCubit>();
+      _uiCubit = getIt<UICubit>(); // ✅ FIXED: Correct class name
       _audioService = getIt<AudioService>();
-      _responsiveUtils = getIt<ResponsiveUtils>();
       
       debugPrint('🔧 Dependencies initialized');
     } catch (e) {
@@ -67,9 +65,10 @@ class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
   /// Initialize and configure all game components
   Future<void> _initializeGameComponents() async {
     try {
-      // Calculate responsive layout
+      // ✅ FIXED: Use ResponsiveUtils as static methods, not injected service
       final screenSize = size;
-      final config = _responsiveUtils.getGameConfig(screenSize);
+      final config = ResponsiveUtils.getGameConfig(screenSize);
+      _currentConfig = config;
       
       // Initialize game world (main game logic container)
       _gameWorld = GameWorld(
@@ -132,120 +131,124 @@ class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
   void _handleGameStateChange(GameState gameState) {
     if (!_isInitialized) return;
 
-    gameState.when(
-      initial: () {
+    // ✅ FIXED: Proper state handling based on your GameState structure
+    switch (gameState.status) {
+      case GameStateStatus.initial:
         debugPrint('🎮 Game state: Initial');
-      },
-      loading: () {
+        break;
+      case GameStateStatus.loading:
         debugPrint('🎮 Game state: Loading');
-      },
-      playing: (session) {
+        break;
+      case GameStateStatus.playing:
         debugPrint('🎮 Game state: Playing');
-        _handleGamePlaying(session);
-      },
-      paused: (session) {
+        _handleGamePlaying(gameState);
+        break;
+      case GameStateStatus.paused:
         debugPrint('🎮 Game state: Paused');
-        _handleGamePaused(session);
-      },
-      gameOver: (session) {
+        _handleGamePaused(gameState);
+        break;
+      case GameStateStatus.gameOver:
         debugPrint('🎮 Game state: Game Over');
-        _handleGameOver(session);
-      },
-      error: (message) {
-        debugPrint('❌ Game state error: $message');
-        _handleGameError(message);
-      },
-    );
+        _handleGameOver(gameState);
+        break;
+      case GameStateStatus.error:
+        debugPrint('❌ Game state error: ${gameState.errorMessage}');
+        _handleGameError(gameState.errorMessage ?? 'Unknown error');
+        break;
+    }
   }
 
   /// Handle player state changes from the cubit
   void _handlePlayerStateChange(PlayerState playerState) {
     if (!_isInitialized) return;
 
-    playerState.when(
-      initial: () {
+    switch (playerState.status) {
+      case PlayerStateStatus.initial:
         debugPrint('👤 Player state: Initial');
-      },
-      loading: () {
+        break;
+      case PlayerStateStatus.loading:
         debugPrint('👤 Player state: Loading');
-      },
-      loaded: (stats) {
-        debugPrint('👤 Player state: Loaded - Score: ${stats.currentScore}');
-        _gameWorld.updatePlayerStats(stats);
-      },
-      error: (message) {
-        debugPrint('❌ Player state error: $message');
-      },
-    );
+        break;
+      case PlayerStateStatus.loaded:
+        debugPrint('👤 Player state: Loaded');
+        _updatePlayerDisplay(playerState);
+        break;
+      case PlayerStateStatus.updating:
+        debugPrint('👤 Player state: Updating');
+        break;
+      case PlayerStateStatus.error:
+        debugPrint('❌ Player state error: ${playerState.errorMessage}');
+        break;
+    }
   }
 
   /// Handle UI state changes from the cubit
-  void _handleUIStateChange(UiState uiState) {
+  void _handleUIStateChange(UIState uiState) {
     if (!_isInitialized) return;
 
-    uiState.when(
-      idle: () {
-        // Normal state
-      },
-      showingPowerUp: (powerUp) {
-        _powerUpSystem.activatePowerUp(powerUp);
-      },
-      showingOverlay: (overlayType) {
-        _handleOverlayDisplay(overlayType);
-      },
-      error: (message) {
-        debugPrint('❌ UI state error: $message');
-      },
-    );
+    // Handle UI-specific state changes
+    if (uiState.isLoading) {
+      // Show loading overlay if needed
+    }
+
+    if (uiState.hasError) {
+      debugPrint('🎨 UI Error: ${uiState.errorMessage}');
+    }
   }
 
-  /// Handle when game enters playing state
-  void _handleGamePlaying(GameSession session) {
+  /// Handle playing state
+  void _handleGamePlaying(GameState gameState) {
     if (_isPaused) {
       _resumeGame();
     }
     
-    _gameWorld.startGame(session);
-    _audioService.playBackgroundMusic('game_music');
-  }
-
-  /// Handle when game is paused
-  void _handleGamePaused(GameSession session) {
-    _pauseGame();
-    _audioService.pauseBackgroundMusic();
-  }
-
-  /// Handle when game is over
-  void _handleGameOver(GameSession session) {
-    _gameWorld.endGame();
-    _audioService.stopBackgroundMusic();
-    _audioService.playSound('game_over');
+    // Update overlays
+    overlays.clear();
     
-    // Trigger haptic feedback
-    _uiCubit.triggerHapticFeedback();
+    // Play background music if enabled
+    if (_uiCubit.state.settings.musicEnabled) {
+      _audioService.playMusic('game_theme');
+    }
   }
 
-  /// Handle game errors
-  void _handleGameError(String message) {
-    _audioService.playSound('error');
-    debugPrint('🚨 Game error: $message');
+  /// Handle paused state
+  void _handleGamePaused(GameState gameState) {
+    if (!_isPaused) {
+      _pauseGame();
+    }
+    
+    // Show pause overlay
+    overlays.clear();
+    overlays.add('PauseOverlay');
   }
 
-  /// Handle overlay display
-  void _handleOverlayDisplay(String overlayType) {
-    switch (overlayType) {
-      case 'pause':
-        overlays.add('PauseOverlay');
-        break;
-      case 'gameOver':
-        overlays.add('GameOverOverlay');
-        break;
-      case 'achievements':
-        overlays.add('AchievementOverlay');
-        break;
-      case 'powerUp':
-        overlays.add('PowerUpOverlay');
-        break;
+  /// Handle game over state
+  void _handleGameOver(GameState gameState) {
+    _pauseGame();
+    
+    // Show game over overlay
+    overlays.clear();
+    overlays.add('GameOverOverlay');
+    
+    // Play game over sound
+    _audioService.playSfx('game_over');
+  }
+
+  /// Handle game error
+  void _handleGameError(String errorMessage) {
+    debugPrint('🚨 Game Error: $errorMessage');
+    
+    // Show error overlay or return to menu
+    overlays.clear();
+    overlays.add('ErrorOverlay');
+  }
+
+  /// Update player display elements
+  void _updatePlayerDisplay(PlayerState playerState) {
+    // Update any player-specific UI elements in the game
+    if (playerState.hasUnseenAchievements) {
+      // Show achievement notification
+      overlays.add('AchievementNotification');
     }
   }
 
@@ -299,6 +302,9 @@ class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
     _isPaused = true;
     pauseEngine();
     _inputSystem.disable();
+    
+    // Pause audio
+    _audioService.pauseMusic();
   }
 
   /// Internal resume handling
@@ -306,6 +312,11 @@ class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
     _isPaused = false;
     resumeEngine();
     _inputSystem.enable();
+    
+    // Resume audio if enabled
+    if (_uiCubit.state.settings.musicEnabled) {
+      _audioService.resumeMusic();
+    }
   }
 
   /// Handle game resize for responsive layout
@@ -314,7 +325,9 @@ class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
     super.onGameResize(size);
     
     if (_isInitialized) {
-      final config = _responsiveUtils.getGameConfig(size);
+      // ✅ FIXED: Use static method instead of injected service
+      final config = ResponsiveUtils.getGameConfig(size);
+      _currentConfig = config;
       _gameWorld.updateLayout(config);
     }
   }
@@ -333,4 +346,23 @@ class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
   PowerUpSystem get powerUpSystem => _powerUpSystem;
   bool get isInitialized => _isInitialized;
   bool get isPaused => _isPaused;
+  GameConfig? get currentConfig => _currentConfig;
+}
+
+// ✅ FIXED: Add missing enums for state management
+enum GameStateStatus {
+  initial,
+  loading,
+  playing,
+  paused,
+  gameOver,
+  error,
+}
+
+enum PlayerStateStatus {
+  initial,
+  loading,
+  loaded,
+  updating,
+  error,
 }

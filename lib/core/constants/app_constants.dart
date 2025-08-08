@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 /// Global application constants for the Box Hooks puzzle game.
 /// Contains configuration values, settings, and magic numbers used throughout the app.
+/// CONSOLIDATED: Includes all GameConstants for single source of truth.
 class AppConstants {
   // Prevent instantiation
   AppConstants._();
@@ -35,6 +36,158 @@ class AppConstants {
   
   /// Terms of service URL
   static const String termsOfServiceUrl = 'https://yourcompany.com/terms';
+
+  // ========================================
+  // 🎮 GAME CONFIGURATION (CONSOLIDATED FROM GameConstants)
+  // ========================================
+  
+  /// Game grid size (8x8) - MAIN PROPERTY USED THROUGHOUT APP
+  static const int gridSize = 8;
+  
+  /// Cell spacing between grid cells
+  static const double cellSpacing = 2.0;
+  static const double gridSpacing = 2.0; // Alias for compatibility
+  
+  /// Cell border radius
+  static const double cellBorderRadius = 4.0;
+  
+  /// Grid padding
+  static const double gridPadding = 16.0;
+  
+  /// Maximum number of active blocks at once
+  static const int maxActiveBlocks = 3;
+  
+  /// Block spacing
+  static const double blockSpacing = 3.0;
+  
+  /// Block border radius
+  static const double blockBorderRadius = 6.0;
+  
+  /// Drag scale multiplier for visual feedback
+  static const double dragScaleMultiplier = 1.05;
+
+  // ========================================
+  // 🏆 SCORING SYSTEM
+  // ========================================
+  
+  /// Base scores for different actions
+  static const Map<String, int> baseScores = {
+    'blockPlace': 10,
+    'singleLine': 100,
+    'doubleLine': 250,
+    'tripleLine': 400,
+    'quadLine': 600,
+    'perfectClear': 1000,
+  };
+  
+  /// Combo multipliers for consecutive actions
+  static const List<double> comboMultipliers = [
+    1.0, 1.2, 1.5, 1.8, 2.2, 2.7, 3.3, 4.0,
+  ];
+  
+  /// Streak bonuses for consecutive successes
+  static const Map<int, int> streakBonuses = {
+    3: 50,
+    5: 120,
+    7: 200,
+    10: 300,
+    15: 500,
+  };
+
+  // ========================================
+  // ⚡ POWER-UPS SYSTEM
+  // ========================================
+  
+  /// Power-up costs in coins
+  static const Map<String, int> powerUpCosts = {
+    'shuffle': 75,
+    'undo': 50,
+    'hint': 25,
+    'bomb': 100,
+  };
+  
+  /// Maximum undo count per game
+  static const int maxUndoCount = 3;
+  
+  /// Maximum hints per game
+  static const int maxHints = 5;
+
+  // ========================================
+  // 🪙 COIN SYSTEM
+  // ========================================
+  
+  /// Starting coins for new players
+  static const int startingCoins = 100;
+  
+  /// Daily bonus coins
+  static const int dailyBonusCoins = 50;
+  
+  /// Coins earned from watching ads
+  static const int adRewardCoins = 25;
+  
+  /// Bonus coins for achievements
+  static const int achievementBonusCoins = 100;
+
+  // ========================================
+  // ⚖️ GAME BALANCE
+  // ========================================
+  
+  /// Lines required per level
+  static const int linesPerLevel = 10;
+  
+  /// Difficulty increase per level
+  static const double difficultyIncrease = 0.1;
+  
+  /// Maximum difficulty multiplier
+  static const double maxDifficulty = 2.0;
+  
+  /// Game over threshold (grid fill percentage)
+  static const int gameOverThreshold = 80;
+
+  // ========================================
+  // 🔧 PHYSICS & COLLISION
+  // ========================================
+  
+  /// Snap threshold for block placement
+  static const double snapThreshold = 30.0;
+  
+  /// Collision detection tolerance
+  static const double collisionTolerance = 2.0;
+  
+  /// Drag dead zone to prevent accidental drags
+  static const double dragDeadZone = 5.0;
+
+  // ========================================
+  // ✨ VISUAL EFFECTS
+  // ========================================
+  
+  /// Default particle count for effects
+  static const int particleCount = 15;
+  
+  /// Particle lifetime in seconds
+  static const double particleLifetime = 2.0;
+  
+  /// Maximum simultaneous glow effects
+  static const int maxGlowEffects = 3;
+
+  // ========================================
+  // 🏅 ACHIEVEMENT THRESHOLDS
+  // ========================================
+  
+  /// Achievement target values
+  static const Map<String, int> achievementTargets = {
+    'firstBlock': 1,
+    'firstLine': 1,
+    'score1K': 1000,
+    'score5K': 5000,
+    'score10K': 10000,
+    'combo5x': 5,
+    'combo10x': 10,
+    'perfectClear': 1,
+    'gamesPlayed': 10,
+    'totalBlocks': 100,
+    'totalLines': 50,
+  };
 
   // ========================================
   // 🎬 ANIMATION & TIMING
@@ -129,312 +282,39 @@ class AppConstants {
   
   /// Key for storing game state
   static const String gameStateKey = 'game_state';
+  static const String gameDataKey = 'game_state'; // Alias for compatibility
   
   /// Key for storing high scores
   static const String highScoresKey = 'high_scores';
   
-  /// Key for storing last claim date for daily rewards
-  static const String lastClaimDateKey = 'last_claim_date';
+  /// Key for storing tutorial progress
+  static const String tutorialKey = 'tutorial_progress';
   
   /// Key for storing user preferences
-  static const String userPreferencesKey = 'user_preferences';
-  
-  /// Key for storing tutorial completion status
-  static const String tutorialCompletedKey = 'tutorial_completed';
-  
-  /// Key for storing first launch flag
-  static const String firstLaunchKey = 'first_launch';
-
-  // ========================================
-  // 🎮 GAME CONFIGURATION
-  // ========================================
-  
-  /// Default grid size (8x8)
-  static const int defaultGridSize = 8;
-  
-  /// Minimum grid size
-  static const int minGridSize = 6;
-  
-  /// Maximum grid size
-  static const int maxGridSize = 12;
-  
-  /// Number of block slots
-  static const int blockSlotCount = 3;
-  
-  /// Maximum blocks that can be active
-  static const int maxActiveBlocks = 3;
-  
-  /// Base score for placing a block
-  static const int baseBlockScore = 10;
-  
-  /// Score multiplier for line clears
-  static const int lineClearMultiplier = 100;
-  
-  /// Score multiplier for combos
-  static const int comboMultiplier = 50;
-  
-  /// Maximum combo streak
-  static const int maxComboStreak = 10;
-  
-  /// Blocks needed for next level
-  static const int blocksPerLevel = 50;
-  
-  /// Maximum undo actions per game
-  static const int maxUndoActions = 3;
-
-  // ========================================
-  // 🏆 ACHIEVEMENTS & PROGRESSION
-  // ========================================
-  
-  /// Number of top scores to track
-  static const int maxHighScores = 10;
-  
-  /// Coins awarded for daily login
-  static const int dailyLoginReward = 50;
-  
-  /// Base coins earned per line clear
-  static const int baseCoinsPerLine = 5;
-  
-  /// Achievement coin rewards
-  static const int achievementCoinReward = 100;
-  
-  /// Perfect clear coin bonus
-  static const int perfectClearBonus = 500;
-  
-  /// Level up coin reward
-  static const int levelUpCoinReward = 25;
-
-  // ========================================
-  // 🔧 UI/UX CONFIGURATION
-  // ========================================
-  
-  /// Default button height
-  static const double defaultButtonHeight = 48.0;
-  
-  /// Default border radius
-  static const double defaultBorderRadius = 12.0;
-  
-  /// Default padding
-  static const double defaultPadding = 16.0;
-  
-  /// Default margin
-  static const double defaultMargin = 8.0;
-  
-  /// Minimum touch target size (accessibility)
-  static const double minTouchTargetSize = 44.0;
-  
-  /// Maximum text scale factor
-  static const double maxTextScaleFactor = 1.4;
-  
-  /// Minimum text scale factor
-  static const double minTextScaleFactor = 0.8;
-  
-  /// Default elevation for cards
-  static const double defaultElevation = 4.0;
-  
-  /// Grid spacing between cells
-  static const double gridSpacing = 2.0;
-
-  // ========================================
-  // 📱 RESPONSIVE BREAKPOINTS
-  // ========================================
-  
-  /// Mobile breakpoint (max width)
-  static const double mobileBreakpoint = 768.0;
-  
-  /// Tablet breakpoint (max width)
-  static const double tabletBreakpoint = 1200.0;
-  
-  /// Desktop breakpoint (min width)
-  static const double desktopBreakpoint = 1200.0;
-  
-  /// Minimum safe area for UI elements
-  static const double minSafeArea = 16.0;
+  static const String preferencesKey = 'user_preferences';
 
   // ========================================
   // 🌐 NETWORK & API
   // ========================================
   
-  /// Request timeout duration
-  static const Duration requestTimeout = Duration(seconds: 30);
+  /// API base URL (if using remote services)
+  static const String apiBaseUrl = 'https://api.yourcompany.com/v1';
   
-  /// Connection timeout duration
-  static const Duration connectionTimeout = Duration(seconds: 10);
+  /// API timeout duration
+  static const Duration apiTimeout = Duration(seconds: 30);
   
-  /// Retry attempts for failed requests
+  /// Maximum retry attempts for network requests
   static const int maxRetryAttempts = 3;
   
-  /// Retry delay between attempts
+  /// Retry delay
   static const Duration retryDelay = Duration(seconds: 2);
 
   // ========================================
-  // 🔐 SECURITY & VALIDATION
-  // ========================================
-  
-  /// Maximum player name length
-  static const int maxPlayerNameLength = 20;
-  
-  /// Minimum player name length
-  static const int minPlayerNameLength = 3;
-  
-  /// Session timeout duration
-  static const Duration sessionTimeout = Duration(hours: 24);
-  
-  /// Maximum file size for uploads (bytes)
-  static const int maxFileSize = 5 * 1024 * 1024; // 5MB
-  
-  /// Allowed file extensions for uploads
-  static const List<String> allowedFileExtensions = ['.jpg', '.jpeg', '.png'];
-
-  // ========================================
-  // 📊 ANALYTICS & TRACKING
-  // ========================================
-  
-  /// Enable analytics tracking
-  static const bool enableAnalytics = !kDebugMode;
-  
-  /// Analytics batch size
-  static const int analyticsBatchSize = 20;
-  
-  /// Analytics flush interval
-  static const Duration analyticsFlushInterval = Duration(minutes: 5);
-  
-  /// Maximum events to store offline
-  static const int maxOfflineEvents = 1000;
-
-  // ========================================
-  // 🎲 GAME DIFFICULTY SETTINGS
-  // ========================================
-  
-  /// Easy mode configuration
-  static const Map<String, dynamic> easyModeConfig = {
-    'gridSize': 8,
-    'scoreMultiplier': 1.0,
-    'timeLimit': null,
-    'hintsAvailable': true,
-  };
-  
-  /// Normal mode configuration
-  static const Map<String, dynamic> normalModeConfig = {
-    'gridSize': 8,
-    'scoreMultiplier': 1.2,
-    'timeLimit': null,
-    'hintsAvailable': true,
-  };
-  
-  /// Hard mode configuration
-  static const Map<String, dynamic> hardModeConfig = {
-    'gridSize': 8,
-    'scoreMultiplier': 1.5,
-    'timeLimit': null,
-    'hintsAvailable': false,
-  };
-  
-  /// Expert mode configuration
-  static const Map<String, dynamic> expertModeConfig = {
-    'gridSize': 10,
-    'scoreMultiplier': 2.0,
-    'timeLimit': 300, // 5 minutes
-    'hintsAvailable': false,
-  };
-
-  // ========================================
-  // 🎨 VISUAL EFFECTS
-  // ========================================
-  
-  /// Particle effect duration
-  static const Duration particleEffectDuration = Duration(milliseconds: 1200);
-  
-  /// Number of particles for block placement
-  static const int blockPlacementParticles = 15;
-  
-  /// Number of particles for line clear
-  static const int lineClearParticles = 25;
-  
-  /// Number of particles for combo effect
-  static const int comboParticles = 30;
-  
-  /// Shake effect duration
-  static const Duration shakeEffectDuration = Duration(milliseconds: 500);
-  
-  /// Flash effect duration
-  static const Duration flashEffectDuration = Duration(milliseconds: 200);
-
-  // ========================================
-  // 📄 HELP & DOCUMENTATION
-  // ========================================
-  
-  /// Tutorial steps count
-  static const int tutorialStepsCount = 8;
-  
-  /// Help sections
-  static const List<String> helpSections = [
-    'Getting Started',
-    'Game Rules',
-    'Scoring System',
-    'Power-ups',
-    'Achievements',
-    'Settings',
-    'Troubleshooting',
-    'Contact Support',
-  ];
-
-  // ========================================
-  // 🌍 LOCALIZATION
-  // ========================================
-  
-  /// Default locale
-  static const String defaultLocale = 'en';
-  
-  /// Supported locales
-  static const List<String> supportedLocales = [
-    'en', // English
-    'es', // Spanish
-    'fr', // French
-    'de', // German
-    'ja', // Japanese
-    'ko', // Korean
-    'zh', // Chinese
-  ];
-
-  // ========================================
-  // 💸 MONETIZATION (if applicable)
-  // ========================================
-  
-  /// Ad display frequency (games between ads)
-  static const int adFrequency = 5;
-  
-  /// Reward video coin amount
-  static const int rewardVideoCoinAmount = 100;
-  
-  /// Daily reward streak multiplier
-  static const double dailyStreakMultiplier = 1.2;
-  
-  /// Maximum daily streak days
-  static const int maxDailyStreakDays = 7;
-
-  // ========================================
-  // 🛠️ DEVELOPMENT & TESTING
-  // ========================================
-  
-  /// Enable dev tools in debug mode
-  static const bool enableDevTools = kDebugMode;
-  
-  /// Enable test data
-  static const bool enableTestData = kDebugMode;
-  
-  /// Test user ID
-  static const String testUserId = 'test_user_123';
-  
-  /// Mock data delay for simulating network requests
-  static const Duration mockDataDelay = Duration(milliseconds: 500);
-
-  // ========================================
-  // 📏 VALIDATION HELPERS
+  // 📋 VALIDATION
   // ========================================
   
   /// Email validation regex
-  static const String emailRegex = r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$';
+  static const String emailRegex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$';
   
   /// Username validation regex (alphanumeric + underscore)
   static const String usernameRegex = r'^[a-zA-Z0-9_]{3,20}$';
@@ -560,4 +440,45 @@ enum AppThemeMode {
   light,
   dark,
   system,
+}
+
+// ========================================
+// DEPRECATED - FOR MIGRATION ONLY
+// ========================================
+
+/// @deprecated Use AppConstants instead
+/// This class exists only for migration compatibility
+/// All imports should be changed to use AppConstants
+class GameConstants {
+  // Redirect all GameConstants to AppConstants
+  static int get gridSize => AppConstants.gridSize;
+  static double get cellSpacing => AppConstants.cellSpacing;
+  static double get gridSpacing => AppConstants.gridSpacing;
+  static double get cellBorderRadius => AppConstants.cellBorderRadius;
+  static double get gridPadding => AppConstants.gridPadding;
+  static int get maxActiveBlocks => AppConstants.maxActiveBlocks;
+  static double get blockSpacing => AppConstants.blockSpacing;
+  static double get blockBorderRadius => AppConstants.blockBorderRadius;
+  static double get dragScaleMultiplier => AppConstants.dragScaleMultiplier;
+  static Map<String, int> get baseScores => AppConstants.baseScores;
+  static List<double> get comboMultipliers => AppConstants.comboMultipliers;
+  static Map<int, int> get streakBonuses => AppConstants.streakBonuses;
+  static Map<String, int> get powerUpCosts => AppConstants.powerUpCosts;
+  static int get maxUndoCount => AppConstants.maxUndoCount;
+  static int get maxHints => AppConstants.maxHints;
+  static int get startingCoins => AppConstants.startingCoins;
+  static int get dailyBonusCoins => AppConstants.dailyBonusCoins;
+  static int get adRewardCoins => AppConstants.adRewardCoins;
+  static int get achievementBonusCoins => AppConstants.achievementBonusCoins;
+  static int get linesPerLevel => AppConstants.linesPerLevel;
+  static double get difficultyIncrease => AppConstants.difficultyIncrease;
+  static double get maxDifficulty => AppConstants.maxDifficulty;
+  static int get gameOverThreshold => AppConstants.gameOverThreshold;
+  static double get snapThreshold => AppConstants.snapThreshold;
+  static double get collisionTolerance => AppConstants.collisionTolerance;
+  static double get dragDeadZone => AppConstants.dragDeadZone;
+  static int get particleCount => AppConstants.particleCount;
+  static double get particleLifetime => AppConstants.particleLifetime;
+  static int get maxGlowEffects => AppConstants.maxGlowEffects;
+  static Map<String, int> get achievementTargets => AppConstants.achievementTargets;
 }
