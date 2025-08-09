@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:puzzle_box/core/constants/game_constants.dart';
 import 'package:puzzle_box/domain/entities/block_entity.dart';
 import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
-import '../../../core/utils/performance_utils.dart';
+import '../../../core/utils/performance_utils.dart' hide Vector2;
 import '../components/game_world.dart';
 
 /// InputSystem handles all user input for the game including touch, drag, and tap gestures.
@@ -82,7 +82,9 @@ class InputSystem extends Component {
   /// Handle drag start event
   bool handleDragStart(Vector2 position) {
     try {
-      PerformanceUtils.markFrameStart();
+      if (GameConstants.enablePerformanceMonitoring) {
+        PerformanceUtils.markFrameStart();
+      }
       
       _lastInputTime = DateTime.now();
       _dragStartPosition = position.clone();
@@ -98,7 +100,9 @@ class InputSystem extends Component {
         return true;
       }
       
-      PerformanceUtils.markFrameEnd();
+      if (GameConstants.enablePerformanceMonitoring) {
+        PerformanceUtils.markFrameEnd();
+      }
       return false;
       
     } catch (e) {
@@ -110,7 +114,9 @@ class InputSystem extends Component {
   /// Handle drag update event
   bool handleDragUpdate(Vector2 position, Vector2 delta) {
     try {
-      PerformanceUtils.markFrameStart();
+      if (GameConstants.enablePerformanceMonitoring) {
+        PerformanceUtils.markFrameStart();
+      }
       
       _lastInputTime = DateTime.now();
       _currentDragPosition = position.clone();
@@ -127,11 +133,12 @@ class InputSystem extends Component {
       
       if (_isDragging && _selectedBlock != null) {
         _updateBlockPosition(position);
-        return true;
       }
       
-      PerformanceUtils.markFrameEnd();
-      return false;
+      if (GameConstants.enablePerformanceMonitoring) {
+        PerformanceUtils.markFrameEnd();
+      }
+      return _isDragging;
       
     } catch (e) {
       _handleInputError('Drag update error', e);
@@ -142,27 +149,27 @@ class InputSystem extends Component {
   /// Handle drag end event
   bool handleDragEnd(Vector2 position) {
     try {
-      PerformanceUtils.markFrameStart();
+      if (GameConstants.enablePerformanceMonitoring) {
+        PerformanceUtils.markFrameStart();
+      }
       
       _lastInputTime = DateTime.now();
       
-      bool handled = false;
+      bool wasDragging = _isDragging;
       
       if (_isDragging && _selectedBlock != null) {
-        handled = _finalizeDrag(position);
-      } else if (_selectedBlock != null) {
-        // Handle tap/click without drag
-        handled = _handleBlockTap();
+        _completeDrag(position);
       }
       
-      _clearInputState();
+      _clearDragState();
       
-      PerformanceUtils.markFrameEnd();
-      return handled;
+      if (GameConstants.enablePerformanceMonitoring) {
+        PerformanceUtils.markFrameEnd();
+      }
+      return wasDragging;
       
     } catch (e) {
       _handleInputError('Drag end error', e);
-      _clearInputState();
       return false;
     }
   }
@@ -170,31 +177,112 @@ class InputSystem extends Component {
   /// Handle tap event
   bool handleTap(Vector2 position) {
     try {
-      PerformanceUtils.markFrameStart();
-      
-      _lastInputTime = DateTime.now();
-      
-      // Record input history
-      _recordInputPosition(position);
-      
-      // Handle multi-tap detection
-      final isMultiTap = _detectMultiTap(position);
-      
-      if (isMultiTap) {
-        return _handleMultiTap(position);
-      } else {
-        return _handleSingleTap(position);
+      if (GameConstants.enablePerformanceMonitoring) {
+        PerformanceUtils.markFrameStart();
       }
+      
+      final now = DateTime.now();
+      
+      // Check for double tap
+      if (_lastTapTime != null && _lastTapPosition != null) {
+        final timeDifference = now.difference(_lastTapTime!);
+        final positionDifference = position.distanceTo(_lastTapPosition!);
+        
+        if (timeDifference <= doubleTapWindow && positionDifference <= tapThreshold) {
+          _tapCount++;
+          return _handleMultiTap(position, _tapCount);
+        }
+      }
+      
+      _tapCount = 1;
+      _lastTapTime = now;
+      _lastTapPosition = position.clone();
+      
+      return _handleSingleTap(position);
       
     } catch (e) {
       _handleInputError('Tap error', e);
       return false;
     } finally {
-      PerformanceUtils.markFrameEnd();
+      if (GameConstants.enablePerformanceMonitoring) {
+        PerformanceUtils.markFrameEnd();
+      }
     }
   }
 
-  /// Get block at the given position
+  /// Handle single tap
+  bool _handleSingleTap(Vector2 position) {
+    final block = _getBlockAtPosition(position);
+    
+    if (block != null) {
+      _selectBlock(block, position);
+      gameCubit.selectBlock(block);
+      return true;
+    }
+    
+    // Check if tapping on valid placement area
+    final gridPosition = _screenToGridPosition(position);
+    if (_isValidGridPosition(gridPosition)) {
+      _handleGridTap(gridPosition);
+      return true;
+    }
+    
+    return false;
+  }
+
+  /// Handle multi-tap (double tap, triple tap, etc.)
+  bool _handleMultiTap(Vector2 position, int tapCount) {
+    switch (tapCount) {
+      case 2:
+        return _handleDoubleTap(position);
+      case 3:
+        return _handleTripleTap(position);
+      default:
+        return false;
+    }
+  }
+
+  /// Handle double tap
+  bool _handleDoubleTap(Vector2 position) {
+    final block = _getBlockAtPosition(position);
+    
+    if (block != null) {
+      // Double tap to rotate block
+      final rotatedBlock = block.rotateClockwise();
+      gameCubit.updateBlockPosition(rotatedBlock, rotatedBlock.position.y, rotatedBlock.position.x);
+      return true;
+    }
+    
+    return false;
+  }
+
+  /// Handle triple tap
+  bool _handleTripleTap(Vector2 position) {
+    final block = _getBlockAtPosition(position);
+    
+    if (block != null) {
+      // Triple tap for special action (e.g., remove block)
+      _removeBlock(block);
+      return true;
+    }
+    
+    return false;
+  }
+
+  /// Handle grid tap (placing block or other grid actions)
+  void _handleGridTap(Vector2 gridPosition) {
+    if (_selectedBlock != null) {
+      final row = gridPosition.y.round();
+      final col = gridPosition.x.round();
+      
+      if (_canPlaceBlock(_selectedBlock!, row, col)) {
+        gameCubit.placeBlock(_selectedBlock!, row, col);
+        _selectedBlock = null;
+      }
+    }
+  }
+
+  /// Get block at screen position
   BlockEntity? _getBlockAtPosition(Vector2 position) {
     final gridPosition = _screenToGridPosition(position);
     
@@ -271,189 +359,63 @@ class InputSystem extends Component {
         ? dragPosition - _selectedBlockOffset!
         : dragPosition;
     
-    final newGridPosition = _screenToGridPosition(adjustedPosition);
+    final gridPosition = _screenToGridPosition(adjustedPosition);
     
-    // Validate and update block position
-    if (_isValidBlockPosition(newGridPosition)) {
-      final newPosition = Position(
-        newGridPosition.x.round(),
-        newGridPosition.y.round(),
-      );
+    if (_isValidGridPosition(gridPosition)) {
+      final row = gridPosition.y.round();
+      final col = gridPosition.x.round();
       
-      gameCubit.updateBlockPosition(_selectedBlock!, newPosition);
+      gameCubit.updateBlockPosition(_selectedBlock!, row, col);
+    }
+  }
+
+  /// Complete drag operation
+  void _completeDrag(Vector2 endPosition) {
+    if (_selectedBlock == null) return;
+    
+    final adjustedPosition = _selectedBlockOffset != null
+        ? endPosition - _selectedBlockOffset!
+        : endPosition;
+    
+    final gridPosition = _screenToGridPosition(adjustedPosition);
+    
+    if (_isValidGridPosition(gridPosition)) {
+      final row = gridPosition.y.round();
+      final col = gridPosition.x.round();
+      
+      if (_canPlaceBlock(_selectedBlock!, row, col)) {
+        gameCubit.completeDrag(_selectedBlock!, row, col);
+      }
     }
   }
 
   /// Check if block can be placed at position
-  bool _isValidBlockPosition(Vector2 gridPosition) {
-    if (_selectedBlock == null) return false;
-    
-    final position = Position(
-      gridPosition.x.round(),
-      gridPosition.y.round(),
-    );
-    
-    return gameWorld.canPlaceBlockAt(_selectedBlock!, position);
+  bool _canPlaceBlock(BlockEntity block, int row, int col) {
+    // Use game cubit to validate placement
+    return gameWorld.canPlaceBlockAt(block, row, col);
   }
 
-  /// Finalize drag operation
-  bool _finalizeDrag(Vector2 finalPosition) {
-    if (_selectedBlock == null) return false;
-    
-    final gridPosition = _screenToGridPosition(finalPosition);
-    
-    if (_isValidBlockPosition(gridPosition)) {
-      final finalGridPosition = Position(
-        gridPosition.x.round(),
-        gridPosition.y.round(),
-      );
-      
-      gameCubit.placeBlock(_selectedBlock!, finalGridPosition);
-      return true;
-    } else {
-      // Invalid position - return block to original position
-      gameCubit.cancelBlockDrag(_selectedBlock!);
-      return false;
-    }
+  /// Remove block from game
+  void _removeBlock(BlockEntity block) {
+    // Implementation for removing block
+    // This would depend on game rules
   }
 
-  /// Handle block tap without drag
-  bool _handleBlockTap() {
-    if (_selectedBlock == null) return false;
-    
-    // Rotate block on tap
-    gameCubit.rotateBlock(_selectedBlock!);
-    return true;
-  }
-
-  /// Detect multi-tap gesture
-  bool _detectMultiTap(Vector2 position) {
-    final now = DateTime.now();
-    
-    if (_lastTapTime != null && _lastTapPosition != null) {
-      final timeDiff = now.difference(_lastTapTime!);
-      final positionDiff = position.distanceTo(_lastTapPosition!);
-      
-      if (timeDiff < doubleTapWindow && positionDiff < tapThreshold) {
-        _tapCount++;
-        _lastTapTime = now;
-        _lastTapPosition = position.clone();
-        return _tapCount >= 2;
-      }
-    }
-    
-    _tapCount = 1;
-    _lastTapTime = now;
-    _lastTapPosition = position.clone();
-    return false;
-  }
-
-  /// Handle multi-tap gesture
-  bool _handleMultiTap(Vector2 position) {
-    // Double tap to instantly place block at best position
-    final block = _getBlockAtPosition(position);
-    if (block != null) {
-      final bestPosition = _findBestPositionForBlock(block);
-      if (bestPosition != null) {
-        gameCubit.placeBlock(block, bestPosition);
-        return true;
-      }
-    }
-    
-    return false;
-  }
-
-  /// Handle single tap gesture
-  bool _handleSingleTap(Vector2 position) {
-    final block = _getBlockAtPosition(position);
-    if (block != null) {
-      return _handleBlockTap();
-    }
-    
-    // Tap on empty area - could trigger special actions
-    return _handleEmptyAreaTap(position);
-  }
-
-  /// Handle tap on empty area
-  bool _handleEmptyAreaTap(Vector2 position) {
-    // Could be used for special actions like power-ups
-    // For now, just clear selection
-    gameCubit.clearSelection();
-    return false;
-  }
-
-  /// Find best position for block placement
-  Position? _findBestPositionForBlock(BlockEntity block) {
-    final gridSize = gameWorld.gridSize;
-    
-    // Start from bottom and work up
-    for (int row = gridSize - 1; row >= 0; row--) {
-      for (int col = 0; col < gridSize; col++) {
-        final position = Position(col, row);
-        if (gameWorld.canPlaceBlockAt(block, position)) {
-          return position;
-        }
-      }
-    }
-    
-    return null;
-  }
-
-  /// Handle long press detection
-  void _handleLongPressDetection() {
-    if (_dragStartPosition == null || _lastInputTime == null) return;
-    
-    final elapsed = DateTime.now().difference(_lastInputTime!);
-    if (elapsed > longPressThreshold && !_isDragging && _selectedBlock != null) {
-      _handleLongPress();
-    }
-  }
-
-  /// Handle long press gesture
-  void _handleLongPress() {
-    if (_selectedBlock != null) {
-      // Long press could trigger special actions
-      gameCubit.showBlockOptions(_selectedBlock!);
-    }
-  }
-
-  /// Record input position for gesture analysis
-  void _recordInputPosition(Vector2 position) {
-    _inputHistory.add(position.clone());
-    
-    if (_inputHistory.length > maxInputHistory) {
-      _inputHistory.removeAt(0);
-    }
-  }
-
-  /// Clean up old input history
-  void _cleanupInputHistory() {
-    // Remove positions older than 1 second
-    final cutoff = DateTime.now().subtract(const Duration(seconds: 1));
-    // Note: In a real implementation, you'd need to store timestamps with positions
-  }
-
-  /// Update drag state
-  void _updateDragState(double dt) {
-    if (_isDragging && _currentDragPosition != null) {
-      // Update visual feedback for dragging
-      gameWorld.updateDragPreview(_selectedBlock, _currentDragPosition!);
-    }
-  }
-
-  /// Update input timing
-  void _updateInputTiming() {
-    // Clean up old tap tracking
-    if (_lastTapTime != null) {
-      final elapsed = DateTime.now().difference(_lastTapTime!);
-      if (elapsed > doubleTapWindow) {
-        _tapCount = 0;
-      }
-    }
-  }
-
-  /// Clear input state
+  /// Clear all input state
   void _clearInputState() {
+    _isDragging = false;
+    _dragStartPosition = null;
+    _currentDragPosition = null;
+    _selectedBlock = null;
+    _selectedBlockOffset = null;
+    _lastTapTime = null;
+    _lastTapPosition = null;
+    _tapCount = 0;
+    _inputHistory.clear();
+  }
+
+  /// Clear drag state specifically
+  void _clearDragState() {
     _isDragging = false;
     _dragStartPosition = null;
     _currentDragPosition = null;
@@ -461,18 +423,85 @@ class InputSystem extends Component {
     _selectedBlockOffset = null;
   }
 
-  /// Handle input errors gracefully
-  void _handleInputError(String context, dynamic error) {
-    // Log error but don't crash the game
-    print('Input system error in $context: $error');
+  /// Record input position for history tracking
+  void _recordInputPosition(Vector2 position) {
+    _inputHistory.add(position.clone());
     
-    // Clear state to prevent cascading errors
-    _clearInputState();
+    // Keep history size manageable
+    if (_inputHistory.length > maxInputHistory) {
+      _inputHistory.removeAt(0);
+    }
   }
 
-  /// System update method for external use
-  void updateSystem(double dt) {
-    update(dt);
+  /// Clean up old input history
+  void _cleanupInputHistory() {
+    // Remove history older than a certain threshold
+    final cutoffTime = DateTime.now().subtract(const Duration(seconds: 1));
+    
+    // For simplicity, just maintain max size
+    while (_inputHistory.length > maxInputHistory) {
+      _inputHistory.removeAt(0);
+    }
+  }
+
+  /// Update drag state over time
+  void _updateDragState(double dt) {
+    if (_isDragging && _currentDragPosition != null) {
+      // Update drag visuals or state as needed
+    }
+  }
+
+  /// Handle long press detection
+  void _handleLongPressDetection() {
+    if (_dragStartPosition != null && !_isDragging) {
+      final elapsed = DateTime.now().difference(_lastInputTime ?? DateTime.now());
+      
+      if (elapsed >= longPressThreshold) {
+        _handleLongPress(_dragStartPosition!);
+        _clearDragState(); // Prevent drag from starting after long press
+      }
+    }
+  }
+
+  /// Handle long press event
+  void _handleLongPress(Vector2 position) {
+    final block = _getBlockAtPosition(position);
+    
+    if (block != null) {
+      // Long press for context menu or special action
+      _showBlockContextMenu(block, position);
+    }
+  }
+
+  /// Show context menu for block
+  void _showBlockContextMenu(BlockEntity block, Vector2 position) {
+    // Implementation for showing context menu
+    // This would integrate with UI system
+  }
+
+  /// Update input timing
+  void _updateInputTiming() {
+    final now = DateTime.now();
+    
+    // Reset tap count if too much time has passed
+    if (_lastTapTime != null && now.difference(_lastTapTime!) > doubleTapWindow) {
+      _tapCount = 0;
+      _lastTapTime = null;
+      _lastTapPosition = null;
+    }
+  }
+
+  /// Handle input errors with graceful degradation
+  void _handleInputError(String context, dynamic error) {
+    print('Input system error in $context: $error');
+    
+    // Reset input state to prevent stuck states
+    _clearInputState();
+    
+    // Log error for debugging
+    if (GameConstants.enableDebugMode) {
+      print('Input system stack trace: ${StackTrace.current}');
+    }
   }
 
   /// Get input velocity for physics calculations
@@ -485,9 +514,24 @@ class InputSystem extends Component {
     return recent - previous;
   }
 
+  /// Get average input position
+  Vector2 getAverageInputPosition() {
+    if (_inputHistory.isEmpty) return Vector2.zero();
+    
+    var sum = Vector2.zero();
+    for (final position in _inputHistory) {
+      sum += position;
+    }
+    
+    return sum / _inputHistory.length.toDouble();
+  }
+
   /// Check if input is currently active
   bool get isInputActive => _isDragging || _selectedBlock != null;
 
   /// Get currently selected block
   BlockEntity? get selectedBlock => _selectedBlock;
+
+  /// Check if currently dragging
+  bool get isDragging => _isDragging;
 }

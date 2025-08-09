@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_print
 
 import 'package:get_it/get_it.dart';
+import 'package:puzzle_box/core/state/game_state.dart';
 import 'package:puzzle_box/domain/usecases/achievement_usecases_dart.dart';
 import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
@@ -76,120 +77,44 @@ Future<void> init() async {
     print('✅ Use cases registered');
     
     // ========================================
-    // STATE MANAGEMENT (CUBITS)
+    // STATE MANAGEMENT - REGISTER AS SINGLETONS
     // ========================================
-    
-    // Register as factories for proper state isolation
-    getIt.registerFactory<GameCubit>(
+    getIt.registerLazySingleton<GameCubit>(
       () => GameCubit(
         getIt<GameUseCases>(),
         getIt<AchievementUseCases>(),
       ),
     );
     
-    getIt.registerFactory<PlayerCubit>(
+    getIt.registerLazySingleton<PlayerCubit>(
       () => PlayerCubit(
         getIt<PlayerUseCases>(),
         getIt<AchievementUseCases>(),
       ),
     );
     
-    getIt.registerFactory<UICubit>(
+    getIt.registerLazySingleton<UICubit>(
       () => UICubit(
         getIt<AudioService>(),
         getIt<StorageService>(),
       ),
     );
-    print('✅ State management registered');
+    print('✅ State management (Cubits) registered as singletons');
     
-    // ========================================
-    // INITIALIZE SERVICES
-    // ========================================
-    await _initializeServices();
+    print('✅ Dependency injection completed successfully!');
     
-    print('✅ Dependency injection initialized successfully');
+    // Validate registration
+    _validateRegistration();
     
-  } catch (e, stackTrace) {
-    print('❌ Failed to initialize dependency injection: $e');
-    print('Stack trace: $stackTrace');
+  } catch (e) {
+    print('❌ Failed to initialize dependencies: $e');
     rethrow;
   }
 }
 
-/// Initialize core services that require async setup
-Future<void> _initializeServices() async {
-  try {
-    // Initialize audio service
-    await getIt<AudioService>().initialize();
-    print('✅ Audio service initialized');
-    
-    // Initialize storage service
-    await getIt<StorageService>().initialize();
-    print('✅ Storage service initialized');
-    
-  } catch (e) {
-    print('❌ Failed to initialize services: $e');
-    rethrow;
-  }
-}
-
-/// Clean up all registered dependencies
-Future<void> dispose() async {
-  try {
-    print('🧹 Disposing dependencies...');
-    
-    // Dispose services that require cleanup
-    if (getIt.isRegistered<AudioService>()) {
-      await getIt<AudioService>().dispose();
-    }
-    
-    if (getIt.isRegistered<StorageService>()) {
-      await getIt<StorageService>().dispose();
-    }
-    
-    // Reset GetIt instance
-    await getIt.reset();
-    
-    print('✅ Dependencies disposed successfully');
-  } catch (e) {
-    print('❌ Failed to dispose dependencies: $e');
-  }
-}
-
-/// Validate that all critical dependencies are properly registered
-bool validateDependencies() {
-  final criticalDependencies = <Type>[
-    SharedPreferences,
-    AudioService,
-    StorageService,
-    LocalStorageDataSource,
-    GameRepository,
-    PlayerRepository,
-    GameUseCases,
-    PlayerUseCases,
-    AchievementUseCases,
-    GameCubit,
-    PlayerCubit,
-    UICubit,
-  ];
-  
-  for (final dependency in criticalDependencies) {
-    if (!getIt.isRegistered(instanceType: dependency)) {
-      print('❌ Missing critical dependency: $dependency');
-      return false;
-    }
-  }
-  
-  print('✅ All critical dependencies validated');
-  return true;
-}
-
-/// Development helper to debug registered dependencies
-void debugPrintDependencies() {
-  if (!kDebugMode) return;
-  
-  print('📋 Registered Dependencies Status:');
-  print('- SharedPreferences: ${getIt.isRegistered<SharedPreferences>()}');
+/// Validate that all critical dependencies are registered
+void _validateRegistration() {
+  print('🔍 Validating dependency registration...');
   print('- AudioService: ${getIt.isRegistered<AudioService>()}');
   print('- StorageService: ${getIt.isRegistered<StorageService>()}');
   print('- LocalStorageDataSource: ${getIt.isRegistered<LocalStorageDataSource>()}');
@@ -234,15 +159,16 @@ void _setupCubitCommunication(
 ) {
   // Listen to game events and update player stats
   gameCubit.stream.listen((gameState) {
-    if (gameState.status == GameStateStatus.gameOver && gameState.sessionData != null) {
+    if (gameState.status == GameStateStatus.gameOver && gameState.currentSession != null) {
       // Update player stats when game ends
       playerCubit.processGameCompletion(
         finalScore: gameState.score,
         level: gameState.level,
         linesCleared: gameState.linesCleared,
-        blocksPlaced: gameState.sessionData!.blocksPlaced,
+        blocksPlaced: 0, // Would need to track this in game state
         gameDuration: gameState.sessionDuration ?? Duration.zero,
-        usedPowerUps: gameState.sessionData!.powerUpsUsed,
+        usedUndo: gameState.remainingUndos < 3,
+        usedPowerUps: {},
       );
     }
   });
@@ -275,11 +201,129 @@ extension GetItExtension on GetIt {
       return get<T>();
     } catch (e) {
       if (fallback != null) {
-        print('⚠️ Using fallback for ${T.toString()}: $e');
+        print('⚠️ Failed to get ${T.toString()}, using fallback: $e');
         return fallback;
       }
-      print('❌ Failed to get dependency ${T.toString()}: $e');
+      print('❌ Failed to get ${T.toString()}: $e');
       rethrow;
     }
   }
+  
+  /// Check if a dependency is registered and ready
+  bool isReady<T extends Object>() {
+    try {
+      get<T>();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+}
+
+/// Clean up all dependencies (for testing and app shutdown)
+Future<void> cleanUp() async {
+  try {
+    print('🧹 Cleaning up dependencies...');
+    
+    // Close all cubits
+    if (getIt.isRegistered<GameCubit>()) {
+      await getIt<GameCubit>().close();
+    }
+    if (getIt.isRegistered<PlayerCubit>()) {
+      await getIt<PlayerCubit>().close();
+    }
+    if (getIt.isRegistered<UICubit>()) {
+      await getIt<UICubit>().close();
+    }
+    
+    // Dispose audio service
+    if (getIt.isRegistered<AudioService>()) {
+      await getIt<AudioService>().dispose();
+    }
+    
+    // Reset GetIt
+    await getIt.reset();
+    
+    print('✅ Dependencies cleaned up');
+  } catch (e) {
+    print('❌ Error during cleanup: $e');
+  }
+}
+
+/// Initialize app with proper error handling and recovery
+Future<void> initializeApp() async {
+  try {
+    print('🎯 Starting Box Hooks application initialization...');
+    
+    // Initialize dependency injection
+    await init();
+    
+    // Initialize state management
+    await initializeStateManagement();
+    
+    // Additional app-specific initialization
+    await _initializeAppSpecificFeatures();
+    
+    print('🎉 Application initialized successfully!');
+    
+  } catch (e) {
+    print('💥 Critical error during app initialization: $e');
+    
+    // Attempt graceful degradation
+    try {
+      await _handleInitializationFailure(e);
+    } catch (recoveryError) {
+      print('💀 Recovery failed: $recoveryError');
+      rethrow;
+    }
+  }
+}
+
+/// Initialize app-specific features
+Future<void> _initializeAppSpecificFeatures() async {
+  try {
+    // Initialize audio system
+    final audioService = getIt<AudioService>();
+    await audioService.initialize();
+    
+    // Pre-load critical assets if needed
+    // await _preloadCriticalAssets();
+    
+    print('✅ App-specific features initialized');
+  } catch (e) {
+    print('⚠️ Warning: Some app features failed to initialize: $e');
+    // Continue anyway - these are not critical for basic functionality
+  }
+}
+
+/// Handle initialization failure with graceful degradation
+Future<void> _handleInitializationFailure(dynamic error) async {
+  print('🔄 Attempting recovery from initialization failure...');
+  
+  try {
+    // Clean up partial state
+    await cleanUp();
+    
+    // Try minimal initialization
+    await _initializeMinimal();
+    
+    print('✅ Minimal initialization successful');
+  } catch (e) {
+    print('❌ Minimal initialization failed: $e');
+    rethrow;
+  }
+}
+
+/// Minimal initialization for emergency fallback
+Future<void> _initializeMinimal() async {
+  final sharedPreferences = await SharedPreferences.getInstance();
+  getIt.registerLazySingleton<SharedPreferences>(() => sharedPreferences);
+  
+  getIt.registerLazySingleton<StorageService>(
+    () => StorageService(getIt<SharedPreferences>()),
+  );
+  
+  getIt.registerLazySingleton<AudioService>(() => AudioService());
+  
+  print('⚠️ Running in minimal mode');
 }

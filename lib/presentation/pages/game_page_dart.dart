@@ -3,7 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flame/game.dart';
 import 'package:puzzle_box/core/constants/app_constants.dart';
+import 'package:puzzle_box/core/constants/game_constants.dart';
+import 'package:puzzle_box/core/state/game_state.dart';
 import 'package:puzzle_box/core/state/player_state.dart' hide PlayerState;
+import 'package:puzzle_box/core/theme/colors.dart';
+import 'package:puzzle_box/domain/entities/game_session_entity.dart';
 import 'package:puzzle_box/domain/entities/power_up_entity.dart';
 import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
@@ -36,8 +40,16 @@ class _GamePageState extends State<GamePage>
   
   // Core game components
   late BoxHooksGame _game;
+  
+  // Animation controllers - CRITICAL: Must be disposed properly
   late AnimationController _hudAnimationController;
+  late AnimationController _overlayAnimationController;
+  late AnimationController _transitionController;
+  
+  // Animations
   late Animation<double> _hudFadeAnimation;
+  late Animation<double> _overlayScaleAnimation;
+  late Animation<Offset> _transitionSlideAnimation;
   
   // State tracking
   bool _isGameInitialized = false;
@@ -47,6 +59,7 @@ class _GamePageState extends State<GamePage>
   
   // Performance monitoring
   final Stopwatch _performanceTimer = Stopwatch();
+  final List<double> _frameRates = [];
   
   // Error tracking
   String? _lastError;
@@ -64,23 +77,60 @@ class _GamePageState extends State<GamePage>
   void dispose() {
     _isDisposed = true;
     WidgetsBinding.instance.removeObserver(this);
+    
+    // CRITICAL: Dispose all animation controllers to prevent memory leaks
     _hudAnimationController.dispose();
+    _overlayAnimationController.dispose();
+    _transitionController.dispose();
+    
+    // Clean up game resources
     _game.pauseEngine();
+    
     super.dispose();
   }
 
   void _initializeAnimations() {
+    // HUD fade animation
     _hudAnimationController = AnimationController(
       duration: const Duration(milliseconds: 500),
       vsync: this,
     );
 
+    // Overlay scale animation
+    _overlayAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    
+    // Page transition animation
+    _transitionController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+
+    // Create animation tweens
     _hudFadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _hudAnimationController,
       curve: Curves.easeInOut,
+    ));
+    
+    _overlayScaleAnimation = Tween<double>(
+      begin: 0.8,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _overlayAnimationController,
+      curve: Curves.elasticOut,
+    ));
+    
+    _transitionSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _transitionController,
+      curve: Curves.easeOutCubic,
     ));
   }
 
@@ -91,295 +141,210 @@ class _GamePageState extends State<GamePage>
       // Check if we should continue a saved game
       _shouldContinueGame = widget.arguments?['continueGame'] ?? false;
       
-      // Create new game instance
-      _game = BoxHooksGame();
+      // Initialize the Flame game
+      _game = BoxHooksGame(
+        gameCubit: getIt<GameCubit>(),
+        playerCubit: getIt<PlayerCubit>(),
+        uiCubit: getIt<UICubit>(),
+      );
       
-      // Initialize game
+      // Load game assets and initialize systems
       await _game.onLoad();
       
-      // Mark as initialized
       setState(() {
         _isGameInitialized = true;
       });
       
-      // Start HUD animation
-      _hudAnimationController.forward();
-      
-      // Start or continue game based on arguments
+      // Start game session
       if (_shouldContinueGame) {
-        await _continueGame();
+        await _loadSavedGame();
       } else {
         await _startNewGame();
       }
       
-      _performanceTimer.stop();
-      PerformanceUtils.recordPageBuildTime(
-        'GamePage', 
-        Duration(milliseconds: _performanceTimer.elapsedMilliseconds),
-      );
+      // Start HUD animation
+      _hudAnimationController.forward();
+      _transitionController.forward();
       
-    } catch (e, stackTrace) {
-      _handleGameError('Failed to initialize game', e, stackTrace);
+      _performanceTimer.stop();
+      
+      if (GameConstants.enablePerformanceMonitoring) {
+        print('Game initialization completed in ${_performanceTimer.elapsedMilliseconds}ms');
+      }
+      
+    } catch (e) {
+      _handleGameError('Failed to initialize game', e);
     }
   }
 
   Future<void> _startNewGame() async {
     try {
-      final gameCubit = context.read<GameCubit>();
-      await gameCubit.startNewGame();
+      final difficulty = widget.arguments?['difficulty'] ?? GameDifficulty.normal;
+      final mode = widget.arguments?['mode'] ?? GameMode.classic;
       
-      if (mounted) {
-        _resumeGame();
-      }
+      await context.read<GameCubit>().startNewGame(
+        difficulty: difficulty,
+        mode: mode,
+      );
       
-    } catch (e, stackTrace) {
-      _handleGameError('Failed to start new game', e, stackTrace);
+    } catch (e) {
+      _handleGameError('Failed to start new game', e);
     }
   }
 
-  Future<void> _continueGame() async {
+  Future<void> _loadSavedGame() async {
     try {
-      final gameCubit = context.read<GameCubit>();
-      await gameCubit.loadSavedGame();
-      
-      if (mounted) {
-        _resumeGame();
+      final sessionId = widget.arguments?['sessionId'] as String?;
+      if (sessionId != null) {
+        await context.read<GameCubit>().loadGame(sessionId);
+      } else {
+        await _startNewGame();
       }
-      
-    } catch (e, stackTrace) {
-      _handleGameError('Failed to continue game', e, stackTrace);
-    }
-  }
-
-  void _handleGameError(String message, dynamic error, StackTrace? stackTrace) {
-    _errorCount++;
-    _lastError = '$message: $error';
-    
-    if (mounted) {
-      final uiCubit = context.read<UICubit>();
-      uiCubit.showError(_lastError!);
-      
-      // If too many errors, navigate back to main menu
-      if (_errorCount >= 3) {
-        uiCubit.navigateToPage(AppPage.mainMenu);
-      }
-    }
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    
-    if (!_isGameInitialized || _isDisposed) return;
-
-    switch (state) {
-      case AppLifecycleState.paused:
-        _pauseGame();
-        break;
-      case AppLifecycleState.resumed:
-        // Don't auto-resume, let user choose
-        break;
-      case AppLifecycleState.detached:
-        _saveGameState();
-        break;
-      default:
-        break;
+    } catch (e) {
+      _handleGameError('Failed to load saved game', e);
+      // Fallback to new game
+      await _startNewGame();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isGameInitialized) {
-      return _buildLoadingScreen();
-    }
-
-    return MultiBlocListener(
-      listeners: [
-        BlocListener<GameCubit, GameState>(
-          listener: _handleGameStateChange,
-        ),
-        BlocListener<UICubit, UIState>(
-          listener: _handleUIStateChange,
-        ),
-      ],
+    return WillPopScope(
+      onWillPop: _handleBackPress,
       child: Scaffold(
-        backgroundColor: Theme.of(context).gameColors.gameBackground,
-        body: SafeArea(
-          child: Stack(
-            children: [
-              // Main game view
-              _buildGameView(),
-              
-              // Game HUD overlay
-              _buildGameHUD(),
-              
-              // Pause overlay
-              _buildPauseOverlay(),
-              
-              // Game over overlay
-              _buildGameOverOverlay(),
-              
-              // Performance overlay (debug only)
-              if (AppConstants.enablePerformanceMonitoring)
-                _buildPerformanceOverlay(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLoadingScreen() {
-    return Scaffold(
-      backgroundColor: Theme.of(context).gameColors.gameBackground,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        backgroundColor: AppColors.darkBackground,
+        body: Stack(
           children: [
-            CircularProgressIndicator(
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            SizedBox(height: ResponsiveUtils.hp(2)),
-            Text(
-              'Loading Game...',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Colors.white,
-              ),
-            ),
-            if (_lastError != null) ...[
-              SizedBox(height: ResponsiveUtils.hp(2)),
-              Container(
-                margin: EdgeInsets.symmetric(horizontal: ResponsiveUtils.wp(10)),
-                padding: EdgeInsets.all(ResponsiveUtils.getAdaptivePadding()),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.error.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                    SizedBox(height: ResponsiveUtils.hp(1)),
-                    Text(
-                      'Error: $_lastError',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    SizedBox(height: ResponsiveUtils.hp(1)),
-                    ElevatedButton(
-                      onPressed: () => context.read<UICubit>().navigateToPage(AppPage.mainMenu),
-                      child: const Text('Back to Menu'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            // Background
+            _buildBackground(),
+            
+            // Game content
+            if (_isGameInitialized) _buildGameContent(),
+            
+            // Loading overlay
+            if (!_isGameInitialized) _buildLoadingOverlay(),
+            
+            // Game HUD
+            if (_isGameInitialized) _buildGameHUD(),
+            
+            // Overlays
+            _buildOverlays(),
+            
+            // Performance overlay (debug only)
+            if (GameConstants.enablePerformanceMonitoring) _buildPerformanceOverlay(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildGameView() {
-    return GameWidget<BoxHooksGame>.controlled(
-      gameFactory: () => _game,
-      overlayBuilderMap: {
-        'pause': (context, game) => const SizedBox.shrink(),
-        'gameOver': (context, game) => const SizedBox.shrink(),
-      },
+  Widget _buildBackground() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppColors.darkBackground,
+            AppColors.darkSurface,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGameContent() {
+    return SlideTransition(
+      position: _transitionSlideAnimation,
+      child: SafeArea(
+        child: GameWidget<BoxHooksGame>.controlled(
+          gameFactory: () => _game,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingOverlay() {
+    return Container(
+      color: AppColors.darkBackground,
+      child: const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+            ),
+            SizedBox(height: 20),
+            Text(
+              'Loading game...',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildGameHUD() {
-    return BlocBuilder<GameCubit, GameState>(
-      builder: (context, gameState) {
-        return AnimatedBuilder(
-          animation: _hudFadeAnimation,
-          child: GameHUD(
-            score: gameState.score,
-            level: gameState.level,
-            linesCleared: gameState.linesCleared,
-            nextBlocks: gameState.nextBlocks,
-            currentCombo: gameState.comboCount,
-            powerUps: gameState.availablePowerUps,
-            canUndo: gameState.canUndo,
-            remainingUndos: gameState.remainingUndos,
-            onPausePressed: _pauseGame,
-            onUndoPressed: gameState.canUndo ? _undoMove : null,
-            onPowerUpPressed: _usePowerUp,
-          ),
-          builder: (context, child) {
-            return Opacity(
-              opacity: _hudFadeAnimation.value,
-              child: child,
-            );
-          },
+    return AnimatedBuilder(
+      animation: _hudFadeAnimation,
+      builder: (context, child) {
+        return Opacity(
+          opacity: _hudFadeAnimation.value,
+          child: const GameHUD(),
         );
       },
     );
   }
 
-  Widget _buildPauseOverlay() {
+  Widget _buildOverlays() {
     return BlocBuilder<UICubit, UIState>(
       builder: (context, uiState) {
-        if (!uiState.showPauseOverlay) return const SizedBox.shrink();
-        
-        return BlocBuilder<GameCubit, GameState>(
-          builder: (context, gameState) {
-            return PauseOverlay(
-              onResume: _resumeGame,
-              onRestart: _restartGame,
-              onMainMenu: _exitToMainMenu,
-              onSettings: _openSettings,
-              gameStats: {
-                'score': gameState.score,
-                'level': gameState.level,
-                'linesCleared': gameState.linesCleared,
-                'combo': gameState.comboCount,
-              },
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildGameOverOverlay() {
-    return BlocBuilder<GameCubit, GameState>(
-      builder: (context, gameState) {
-        if (!gameState.isGameOver || gameState.currentSession == null) {
-          return const SizedBox.shrink();
-        }
-        
-        return BlocBuilder<PlayerCubit, PlayerState>(
-          builder: (context, playerState) {
-            return GameOverOverlay(
-              gameSession: gameState.currentSession!,
-              unlockedAchievements: playerState.recentAchievements,
-              onRestart: _restartGame,
-              onMainMenu: _exitToMainMenu,
-              onShare: _shareScore,
-              onUndo: gameState.canUndo ? _undoMove : null,
-              canUndo: gameState.canUndo,
-            );
-          },
+        return Stack(
+          children: [
+            // Pause overlay
+            if (uiState.showPauseOverlay)
+              AnimatedBuilder(
+                animation: _overlayScaleAnimation,
+                builder: (context, child) {
+                  return Transform.scale(
+                    scale: _overlayScaleAnimation.value,
+                    child: const PauseOverlay(),
+                  );
+                },
+              ),
+            
+            // Game over overlay
+            if (uiState.showGameOverOverlay)
+              BlocBuilder<GameCubit, GameState>(
+                builder: (context, gameState) {
+                  return AnimatedBuilder(
+                    animation: _overlayScaleAnimation,
+                    builder: (context, child) {
+                      return Transform.scale(
+                        scale: _overlayScaleAnimation.value,
+                        child: GameOverOverlay(
+                          gameSession: gameState.currentSession!,
+                          onRestart: _handleGameRestart,
+                          onMainMenu: _handleBackToMainMenu,
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+          ],
         );
       },
     );
   }
 
   Widget _buildPerformanceOverlay() {
-    if (!_isGameInitialized) return const SizedBox.shrink();
-    
     return Positioned(
-      top: 10,
+      top: 50,
       right: 10,
       child: Container(
         padding: const EdgeInsets.all(8),
@@ -389,146 +354,180 @@ class _GamePageState extends State<GamePage>
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'FPS: ${_game.currentFPS.toStringAsFixed(1)}',
-              style: const TextStyle(color: Colors.white, fontSize: 10),
+              'FPS: ${_getCurrentFPS().toStringAsFixed(1)}',
+              style: const TextStyle(color: Colors.white, fontSize: 12),
             ),
             Text(
-              'Memory: ${PerformanceUtils.getMetrics().currentMemoryMB.toStringAsFixed(1)}MB',
-              style: const TextStyle(color: Colors.white, fontSize: 10),
+              'Memory: ${_getMemoryUsage()}MB',
+              style: const TextStyle(color: Colors.white, fontSize: 12),
             ),
-            if (_errorCount > 0)
-              Text(
-                'Errors: $_errorCount',
-                style: const TextStyle(color: Colors.red, fontSize: 10),
-              ),
+            Text(
+              'Errors: $_errorCount',
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
           ],
         ),
       ),
     );
   }
 
-  // ========================================
-  // GAME CONTROL METHODS
-  // ========================================
+  // Event handlers
+  Future<bool> _handleBackPress() async {
+    if (_isGamePaused) {
+      // Resume game
+      context.read<GameCubit>().resumeGame();
+      context.read<UICubit>().hidePauseOverlay();
+      setState(() {
+        _isGamePaused = false;
+      });
+      return false;
+    } else {
+      // Pause game and show confirmation
+      _pauseGame();
+      return false;
+    }
+  }
 
   void _pauseGame() {
-    if (_isGamePaused || !_isGameInitialized) return;
-    
-    setState(() {
-      _isGamePaused = true;
-    });
-    
-    _game.pauseGame();
-    context.read<UICubit>().showPauseOverlay();
-    HapticFeedback.lightImpact();
+    if (!_isGamePaused) {
+      context.read<GameCubit>().pauseGame();
+      context.read<UICubit>().showPauseOverlay();
+      
+      setState(() {
+        _isGamePaused = true;
+      });
+      
+      _overlayAnimationController.forward();
+    }
   }
 
   void _resumeGame() {
-    if (!_isGamePaused || !_isGameInitialized) return;
-    
-    setState(() {
-      _isGamePaused = false;
-    });
-    
-    _game.resumeGame();
-    context.read<UICubit>().hidePauseOverlay();
-    HapticFeedback.lightImpact();
-  }
-
-  Future<void> _restartGame() async {
-    try {
-      await _game.resetGame();
-      await context.read<GameCubit>().startNewGame();
-      _resumeGame();
-    } catch (e, stackTrace) {
-      _handleGameError('Failed to restart game', e, stackTrace);
-    }
-  }
-
-  void _undoMove() {
-    try {
-      context.read<GameCubit>().undoLastMove();
-      HapticFeedback.lightImpact();
-    } catch (e, stackTrace) {
-      _handleGameError('Failed to undo move', e, stackTrace);
-    }
-  }
-
-  void _usePowerUp(PowerUpType powerUpType) {
-    try {
-      context.read<GameCubit>().usePowerUp(powerUpType);
-      HapticFeedback.mediumImpact();
-    } catch (e, stackTrace) {
-      _handleGameError('Failed to use power-up', e, stackTrace);
-    }
-  }
-
-  void _exitToMainMenu() {
-    _saveGameState();
-    context.read<UICubit>().navigateToPage(AppPage.mainMenu);
-  }
-
-  void _openSettings() {
-    context.read<UICubit>().navigateToPage(AppPage.settings);
-  }
-
-  void _shareScore() {
-    final gameState = context.read<GameCubit>().state;
-    final scoreText = 'I just scored ${gameState.score} points in Box Hooks! Can you beat it?';
-    
-    // Implement share functionality
-    // This would integrate with platform sharing APIs
-    context.read<UICubit>().showNotification('Share feature coming soon!');
-  }
-
-  Future<void> _saveGameState() async {
-    if (!_isGameInitialized) return;
-    
-    try {
-      await context.read<GameCubit>().saveGame();
-    } catch (e, stackTrace) {
-      _handleGameError('Failed to save game', e, stackTrace);
-    }
-  }
-
-  // ========================================
-  // STATE CHANGE HANDLERS
-  // ========================================
-
-  void _handleGameStateChange(BuildContext context, GameState state) {
-    // Handle game over
-    if (state.isGameOver && state.currentSession != null) {
-      _isGamePaused = true;
-      _game.pauseGame();
+    if (_isGamePaused) {
+      context.read<GameCubit>().resumeGame();
+      context.read<UICubit>().hidePauseOverlay();
       
-      // Update player stats
-      context.read<PlayerCubit>().processGameCompletion(
-        finalScore: state.score,
-        level: state.level,
-        linesCleared: state.linesCleared,
-        blocksPlaced: state.currentSession!.statistics.blocksPlaced,
-        gameDuration: state.sessionDuration ?? Duration.zero,
-        usedPowerUps: state.currentSession!.statistics.powerUpsUsed,
-      );
-    }
-    
-    // Handle errors
-    if (state.hasError && state.errorMessage != null) {
-      _handleGameError('Game error', state.errorMessage!, null);
+      setState(() {
+        _isGamePaused = false;
+      });
+      
+      _overlayAnimationController.reverse();
     }
   }
 
-  void _handleUIStateChange(BuildContext context, UIState state) {
-    // Handle navigation away from game page
-    if (state.currentPage != AppPage.game && mounted) {
-      _saveGameState();
+  void _handleGameRestart() async {
+    try {
+      // Hide overlays
+      context.read<UICubit>().hideGameOverOverlay();
+      _overlayAnimationController.reverse();
+      
+      // Start transition animation
+      _transitionController.reverse().then((_) async {
+        // Start new game
+        await _startNewGame();
+        
+        // Restart animations
+        _transitionController.forward();
+        _hudAnimationController.forward();
+      });
+      
+    } catch (e) {
+      _handleGameError('Failed to restart game', e);
+    }
+  }
+
+  void _handleBackToMainMenu() {
+    // Animate out
+    _hudAnimationController.reverse();
+    _transitionController.reverse().then((_) {
+      // Navigate to main menu
+      context.read<UICubit>().navigateToPage(AppPage.mainMenu);
+    });
+  }
+
+  // Performance monitoring
+  double _getCurrentFPS() {
+    if (_frameRates.isEmpty) return 0.0;
+    
+    final sum = _frameRates.reduce((a, b) => a + b);
+    return sum / _frameRates.length;
+  }
+
+  String _getMemoryUsage() {
+    // This would need platform-specific implementation
+    return '0';
+  }
+
+  void _updateFrameRate() {
+    if (GameConstants.enablePerformanceMonitoring) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      
+      // Calculate FPS (simplified)
+      _frameRates.add(60.0); // Placeholder
+      
+      // Keep only recent frame rates
+      if (_frameRates.length > 60) {
+        _frameRates.removeAt(0);
+      }
+    }
+  }
+
+  // Error handling
+  void _handleGameError(String message, dynamic error) {
+    _errorCount++;
+    _lastError = message;
+    
+    print('Game error: $message - $error');
+    
+    if (!_isDisposed) {
+      // Show error message to user
+      context.read<UICubit>().showError(message);
     }
     
-    // Handle errors
-    if (state.hasError && state.errorMessage != null) {
-      _handleGameError('UI error', state.errorMessage!, null);
+    // Log error for debugging
+    if (GameConstants.enableDebugMode) {
+      print('Game error stack trace: ${StackTrace.current}');
+    }
+  }
+
+  // App lifecycle methods
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    switch (state) {
+      case AppLifecycleState.paused:
+        if (!_isGamePaused) {
+          _pauseGame();
+        }
+        break;
+      case AppLifecycleState.resumed:
+        // Game will be resumed manually by user
+        break;
+      case AppLifecycleState.inactive:
+        if (!_isGamePaused) {
+          _pauseGame();
+        }
+        break;
+      case AppLifecycleState.detached:
+        // App is being terminated
+        break;
+      case AppLifecycleState.hidden:
+        // TODO: Handle this case.
+        throw UnimplementedError();
+    }
+  }
+
+  @override
+  void didUpdateWidget(GamePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // Handle widget updates
+    if (widget.arguments != oldWidget.arguments) {
+      // Reinitialize if arguments changed
+      _initializeGame();
     }
   }
 }

@@ -1,5 +1,3 @@
-// File: lib/core/errors/exceptions.dart
-
 /// Base exception class for the application
 abstract class AppException implements Exception {
   final String message;
@@ -86,6 +84,12 @@ class PlatformException extends AppException {
       : super(message, code: code, details: details);
 }
 
+/// Business logic exceptions
+class BusinessLogicException extends AppException {
+  const BusinessLogicException(String message, {String? code, dynamic details})
+      : super(message, code: code, details: details);
+}
+
 /// Database exceptions
 class DatabaseException extends AppException {
   const DatabaseException(String message, {String? code, dynamic details})
@@ -98,15 +102,15 @@ class FileSystemException extends AppException {
       : super(message, code: code, details: details);
 }
 
-/// Initialization exceptions
-class InitializationException extends AppException {
-  const InitializationException(String message, {String? code, dynamic details})
-      : super(message, code: code, details: details);
-}
-
 /// Configuration exceptions
 class ConfigurationException extends AppException {
   const ConfigurationException(String message, {String? code, dynamic details})
+      : super(message, code: code, details: details);
+}
+
+/// Initialization exceptions
+class InitializationException extends AppException {
+  const InitializationException(String message, {String? code, dynamic details})
       : super(message, code: code, details: details);
 }
 
@@ -117,20 +121,8 @@ class NotFoundException extends AppException {
 }
 
 /// Concurrent access exceptions
-class ConcurrentAccessException extends AppException {
-  const ConcurrentAccessException(String message, {String? code, dynamic details})
-      : super(message, code: code, details: details);
-}
-
-/// Business logic violation exceptions
-class BusinessLogicException extends AppException {
-  const BusinessLogicException(String message, {String? code, dynamic details})
-      : super(message, code: code, details: details);
-}
-
-/// Security-related exceptions
-class SecurityException extends AppException {
-  const SecurityException(String message, {String? code, dynamic details})
+class ConcurrencyException extends AppException {
+  const ConcurrencyException(String message, {String? code, dynamic details})
       : super(message, code: code, details: details);
 }
 
@@ -222,14 +214,117 @@ class BackupException extends AppException {
       : super(message, code: code, details: details);
 }
 
-/// Synchronization exceptions
-class SyncException extends AppException {
-  const SyncException(String message, {String? code, dynamic details})
+/// User input exceptions
+class UserInputException extends AppException {
+  const UserInputException(String message, {String? code, dynamic details})
       : super(message, code: code, details: details);
 }
 
-/// Image processing exceptions
-class ImageProcessingException extends AppException {
-  const ImageProcessingException(String message, {String? code, dynamic details})
+/// Format exceptions
+class FormatException extends AppException {
+  const FormatException(String message, {String? code, dynamic details})
       : super(message, code: code, details: details);
+}
+
+/// Version compatibility exceptions
+class VersionException extends AppException {
+  const VersionException(String message, {String? code, dynamic details})
+      : super(message, code: code, details: details);
+}
+
+/// Security exceptions
+class SecurityException extends AppException {
+  const SecurityException(String message, {String? code, dynamic details})
+      : super(message, code: code, details: details);
+}
+
+/// Licensing exceptions
+class LicenseException extends AppException {
+  const LicenseException(String message, {String? code, dynamic details})
+      : super(message, code: code, details: details);
+}
+
+/// Service unavailable exceptions
+class ServiceUnavailableException extends AppException {
+  const ServiceUnavailableException(String message, {String? code, dynamic details})
+      : super(message, code: code, details: details);
+}
+
+/// External service exceptions
+class ExternalServiceException extends AppException {
+  final String? serviceName;
+
+  const ExternalServiceException(String message, {this.serviceName, String? code, dynamic details})
+      : super(message, code: code, details: details);
+}
+
+/// Exception utility class for common exception handling patterns
+class ExceptionUtils {
+  /// Extract user-friendly message from exception
+  static String getUserMessage(Exception exception) {
+    if (exception is AppException) {
+      return exception.message;
+    }
+    
+    // Generic message for unknown exceptions
+    return 'An unexpected error occurred. Please try again.';
+  }
+
+  /// Check if exception is retryable
+  static bool isRetryable(Exception exception) {
+    if (exception is NetworkException ||
+        exception is TimeoutException ||
+        exception is ServiceUnavailableException) {
+      return true;
+    }
+    
+    return false;
+  }
+
+  /// Get exception severity level
+  static ExceptionSeverity getSeverity(Exception exception) {
+    if (exception is MemoryException ||
+        exception is ConcurrencyException ||
+        exception is SecurityException) {
+      return ExceptionSeverity.critical;
+    }
+    
+    if (exception is NetworkException ||
+        exception is StorageException ||
+        exception is GameException) {
+      return ExceptionSeverity.high;
+    }
+    
+    if (exception is ValidationException ||
+        exception is UserInputException ||
+        exception is FormatException) {
+      return ExceptionSeverity.medium;
+    }
+    
+    return ExceptionSeverity.low;
+  }
+
+  /// Convert exception to error report
+  static Map<String, dynamic> toErrorReport(Exception exception, {StackTrace? stackTrace}) {
+    return {
+      'type': exception.runtimeType.toString(),
+      'message': exception.toString(),
+      'timestamp': DateTime.now().toIso8601String(),
+      'severity': getSeverity(exception).name,
+      'retryable': isRetryable(exception),
+      'stackTrace': stackTrace?.toString(),
+      if (exception is AppException) ...{
+        'code': exception.code,
+        'details': exception.details,
+      },
+    };
+  }
+}
+
+/// Exception severity levels
+enum ExceptionSeverity {
+  low,
+  medium,
+  high,
+  critical;
 }

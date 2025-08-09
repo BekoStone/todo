@@ -20,6 +20,8 @@ class PlayerStats extends Equatable {
   /// Last game played date
   final DateTime? lastGameDate;
 
+  final DateTime? lastDailyBonusDate;
+
   // ========================================
   // CORE STATISTICS
   // ========================================
@@ -95,7 +97,8 @@ class PlayerStats extends Equatable {
   
   /// Total perfect clears achieved
   final int totalPerfectClears;
-  
+  /// Daily bonus streak for consecutive logins
+  final int dailyBonusStreak;
   /// Consecutive login days
   final int consecutiveLoginDays;
   
@@ -128,7 +131,7 @@ class PlayerStats extends Equatable {
   /// Recent performance data
   final List<GamePerformanceData> recentPerformance;
 
-  const PlayerStats({
+  const PlayerStats(this.lastDailyBonusDate, this.dailyBonusStreak, {
     required this.playerId,
     required this.createdAt,
     required this.lastUpdated,
@@ -182,11 +185,13 @@ class PlayerStats extends Equatable {
     final id = playerId ?? _generatePlayerId();
     
     return PlayerStats(
+      null,
+      0,
       playerId: id,
       createdAt: now,
       lastUpdated: now,
       sessionTracker: SessionTracker.initial(),
-      preferences: {
+      preferences: const {
         'soundEnabled': true,
         'musicEnabled': true,
         'hapticsEnabled': true,
@@ -242,9 +247,11 @@ class PlayerStats extends Equatable {
     
     // Session tracking
     SessionTracker? sessionTracker,
-    List<GamePerformanceData>? recentPerformance,
+    List<GamePerformanceData>? recentPerformance, required DateTime lastDailyBonusDate, required dailyBonusStreak,
   }) {
     return PlayerStats(
+      lastDailyBonusDate,
+      dailyBonusStreak,
       playerId: playerId ?? this.playerId,
       createdAt: createdAt ?? this.createdAt,
       lastUpdated: lastUpdated ?? DateTime.now(),
@@ -443,6 +450,10 @@ class PlayerStats extends Equatable {
   /// Create from JSON
   factory PlayerStats.fromJson(Map<String, dynamic> json) {
     return PlayerStats(
+      json['lastDailyBonusDate'] != null
+          ? DateTime.parse(json['lastDailyBonusDate'] as String)
+          : null,
+      json['dailyBonusStreak'] as int? ?? 0,
       playerId: json['playerId'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
       lastUpdated: DateTime.parse(json['lastUpdated'] as String),

@@ -3,17 +3,17 @@
 
 import 'dart:ui';
 
+import 'package:puzzle_box/core/state/game_state.dart';
 import 'package:puzzle_box/core/state/player_state.dart';
 import 'package:puzzle_box/core/state/ui_state.dart';
+import 'package:puzzle_box/domain/entities/achievement_entity.dart' hide Achievement;
 import 'package:puzzle_box/domain/entities/game_session_entity.dart';
 import 'package:puzzle_box/domain/entities/player_stats_entity.dart';
-import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
-import 'package:puzzle_box/presentation/flame/box_hooks_game.dart' hide PlayerStateStatus;
 
 /// Extensions for GameState to add helper methods
-extension GameStateExtensions on GameStatea {
+extension GameStateExtensions on GameState {
   /// Check if game is currently being played
   bool get isPlaying => status == GameStateStatus.playing;
   
@@ -88,8 +88,8 @@ class StateHelper {
       'totalCoins': state.safeCoins,
       'highScore': state.safeHighScore,
       'gamesPlayed': state.playerStats?.totalGamesPlayed ?? 0,
-      'achievementsUnlocked': state.unlockedAchievements,
-      'totalAchievements': state.unlockedAchievements,
+      'achievementsUnlocked': state.achievements.length,
+      'totalAchievements': state.achievements.length,
       'hasUnseenAchievements': state.hasUnseenAchievements,
     };
   }
@@ -113,16 +113,17 @@ class StateSynchronizer {
         linesCleared: gameState.linesCleared,
         blocksPlaced: 0, // Would be tracked in actual game state
         gameDuration: gameState.sessionDuration ?? Duration.zero,
-        usedUndo: gameState.remainingUndos < 3, usedPowerUps: {},
+        usedUndo: gameState.remainingUndos < 3, 
+        usedPowerUps: {},
       );
     }
   }
   
   /// Sync achievement unlocks with UI notifications
   static void syncAchievementUnlocks(PlayerState playerState, UICubit uiCubit) {
-    if (playerState.hasUnseenAchievements && playerState.recentUnlocks.isNotEmpty) {
+    if (playerState.hasUnseenAchievements && playerState.unlockedAchievements.isNotEmpty) {
       // Could trigger UI celebration or notifications
-      for (final achievement in playerState.recentUnlocks) {
+      for (final achievement in playerState.unlockedAchievements) {
         // Show achievement unlock animation
         uiCubit.showAchievementUnlock(achievement);
       }

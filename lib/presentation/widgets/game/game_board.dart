@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:puzzle_box/core/state/game_state.dart';
 import 'package:puzzle_box/domain/entities/block_entity.dart';
 import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
 import 'dart:math' as math;
@@ -8,13 +10,14 @@ import '../../flame/components/block_component.dart' as flame_block;
 import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/game_constants.dart';
 import '../../../core/utils/responsive_utils.dart';
+import '../../../core/utils/performance_utils.dart';
 
 class GameBoard extends StatefulWidget {
   /// The Flame game instance
   final BoxHooksGame game;
   
   /// Callback when a block is placed on the board
-  final Function(Block block, int row, int col)? onBlockPlaced;
+  final Function(BlockEntity block, int row, int col)? onBlockPlaced;
   
   /// Callback when a line is cleared
   final Function(List<int> rows, List<int> cols)? onLinesCleared;
@@ -36,17 +39,25 @@ class GameBoard extends StatefulWidget {
 
 class _GameBoardState extends State<GameBoard>
     with TickerProviderStateMixin {
+  
+  // Animation controllers - CRITICAL: These must be disposed properly
   late AnimationController _clearAnimationController;
   late AnimationController _pulseController;
+  late AnimationController _placementController;
+  late AnimationController _hoverController;
+  
+  // Animations
   late Animation<double> _clearAnimation;
   late Animation<double> _pulseAnimation;
+  late Animation<double> _placementAnimation;
+  late Animation<double> _hoverAnimation;
   
-  // Grid state
+  // Grid state - optimized for differential updates
   late List<List<bool>> _occupiedCells;
   late List<List<Color?>> _cellColors;
   late List<List<BlockEntity?>> _cellBlocks;
   
-  // Animation state
+  // Animation state tracking
   final Set<int> _animatingRows = {};
   final Set<int> _animatingCols = {};
   final Map<String, AnimationController> _cellControllers = {};
@@ -57,25 +68,62 @@ class _GameBoardState extends State<GameBoard>
   int? _dragTargetRow;
   int? _dragTargetCol;
   bool _isValidPlacement = false;
+  
+  // Performance optimization
+  bool _needsGridUpdate = true;
+  final List<List<Widget>> _cachedCells = [];
 
   @override
   void initState() {
     super.initState();
     _setupAnimations();
     _initializeGrid();
+    _startPerformanceMonitoring();
+  }
+
+  @override
+  void dispose() {
+    // CRITICAL: Dispose all animation controllers to prevent memory leaks
+    _clearAnimationController.dispose();
+    _pulseController.dispose();
+    _placementController.dispose();
+    _hoverController.dispose();
+    
+    // Dispose all dynamic cell controllers
+    for (final controller in _cellControllers.values) {
+      controller.dispose();
+    }
+    _cellControllers.clear();
+    
+    super.dispose();
   }
 
   void _setupAnimations() {
+    // Line clear animation
     _clearAnimationController = AnimationController(
       duration: const Duration(milliseconds: 400),
       vsync: this,
     );
 
+    // Pulse animation for interactive feedback
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1000),
       vsync: this,
     );
+    
+    // Block placement animation
+    _placementController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    
+    // Hover feedback animation
+    _hoverController = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
 
+    // Create animation tweens
     _clearAnimation = Tween<double>(
       begin: 1.0,
       end: 0.0,
@@ -91,486 +139,409 @@ class _GameBoardState extends State<GameBoard>
       parent: _pulseController,
       curve: Curves.easeInOut,
     ));
+    
+    _placementAnimation = Tween<double>(
+      begin: 0.8,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _placementController,
+      curve: Curves.elasticOut,
+    ));
+    
+    _hoverAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.02,
+    ).animate(CurvedAnimation(
+      parent: _hoverController,
+      curve: Curves.easeInOut,
+    ));
 
+    // Start continuous pulse animation
     _pulseController.repeat(reverse: true);
   }
 
   void _initializeGrid() {
+    final gridSize = GameConstants.defaultGridSize;
+    
     _occupiedCells = List.generate(
-      GameConstants.gridSize,
-      (row) => List.filled(GameConstants.gridSize, false),
+      gridSize,
+      (row) => List.filled(gridSize, false),
     );
     
     _cellColors = List.generate(
-      GameConstants.gridSize,
-      (row) => List.filled(GameConstants.gridSize, null),
+      gridSize,
+      (row) => List.filled(gridSize, null),
     );
     
     _cellBlocks = List.generate(
-      GameConstants.gridSize,
-      (row) => List.filled(GameConstants.gridSize, null),
+      gridSize,
+      (row) => List.filled(gridSize, null),
     );
+    
+    // Initialize cached cells
+    _cachedCells.clear();
+    for (int i = 0; i < gridSize; i++) {
+      _cachedCells.add(List.filled(gridSize, const SizedBox()));
+    }
   }
 
-  @override
-  void dispose() {
-    _clearAnimationController.dispose();
-    _pulseController.dispose();
-    for (final controller in _cellControllers.values) {
-      controller.dispose();
+  void _startPerformanceMonitoring() {
+    if (GameConstants.enablePerformanceMonitoring) {
+      PerformanceUtils.markFrameStart();
     }
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return BlocListener<GameCubit, GameState>(
       listener: (context, state) {
-        if (state is GameStateLoaded) {
-          _updateGridFromGameState(state);
-        }
+        _handleGameStateChange(state);
       },
-      child: Container(
-        margin: EdgeInsets.all(ResponsiveUtils.wp(2)),
-        padding: EdgeInsets.all(ResponsiveUtils.wp(2)),
-        decoration: _buildBoardDecoration(),
-        child: AspectRatio(
-          aspectRatio: 1.0,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final cellSize = _calculateCellSize(constraints);
-              return _buildGrid(cellSize);
-            },
+      child: BlocBuilder<GameCubit, GameState>(
+        buildWhen: (previous, current) {
+          // Only rebuild when grid actually changes
+          return previous.grid != current.grid ||
+                 previous.activeBlocks != current.activeBlocks ||
+                 previous.status != current.status;
+        },
+        builder: (context, state) {
+          return _buildGameBoard(context, state);
+        },
+      ),
+    );
+  }
+
+  Widget _buildGameBoard(BuildContext context, GameState state) {
+    final screenSize = MediaQuery.of(context).size;
+    final boardSize = _calculateBoardSize(screenSize);
+    final cellSize = boardSize / GameConstants.defaultGridSize;
+
+    return Container(
+      width: boardSize,
+      height: boardSize,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
-        ),
+        ],
+      ),
+      child: AnimatedBuilder(
+        animation: Listenable.merge([
+          _clearAnimation,
+          _pulseAnimation,
+          _placementAnimation,
+          _hoverAnimation,
+        ]),
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _pulseAnimation.value,
+            child: _buildGrid(state, cellSize),
+          );
+        },
       ),
     );
   }
 
-  BoxDecoration _buildBoardDecoration() {
-    return BoxDecoration(
-      gradient: AppTheme.surfaceGradient,
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(
-        color: AppTheme.primaryColor.withOpacity(0.3),
-        width: 2,
+  Widget _buildGrid(GameState state, double cellSize) {
+    // Only rebuild grid if necessary for performance
+    if (_needsGridUpdate) {
+      _updateCachedGrid(state, cellSize);
+      _needsGridUpdate = false;
+    }
+
+    return GridView.builder(
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: GameConstants.defaultGridSize * GameConstants.defaultGridSize,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: GameConstants.defaultGridSize,
+        childAspectRatio: 1.0,
       ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.2),
-          blurRadius: 10,
-          offset: const Offset(0, 5),
-        ),
-        BoxShadow(
-          color: AppTheme.primaryColor.withOpacity(0.1),
-          blurRadius: 20,
-          offset: const Offset(0, 0),
-        ),
-      ],
+      itemBuilder: (context, index) {
+        final row = index ~/ GameConstants.defaultGridSize;
+        final col = index % GameConstants.defaultGridSize;
+        return _cachedCells[row][col];
+      },
     );
   }
 
-  double _calculateCellSize(BoxConstraints constraints) {
-    final availableSize = math.min(constraints.maxWidth, constraints.maxHeight);
-    final totalSpacing = GameConstants.cellSpacing * (GameConstants.gridSize - 1);
-    return (availableSize - totalSpacing) / GameConstants.gridSize;
-  }
-
-  Widget _buildGrid(double cellSize) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(GameConstants.gridSize, (row) {
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(GameConstants.gridSize, (col) {
-            return Container(
-              margin: EdgeInsets.all(GameConstants.cellSpacing / 2),
-              child: _buildCell(row, col, cellSize),
-            );
-          }),
-        );
-      }),
-    );
-  }
-
-  Widget _buildCell(int row, int col, double cellSize) {
-    final isOccupied = _occupiedCells[row][col];
-    final cellColor = _cellColors[row][col];
-    final isHighlighted = _shouldHighlightCell(row, col);
-    final isValidTarget = _isValidPlacementTarget(row, col);
-    final isAnimating = _animatingRows.contains(row) || _animatingCols.contains(col);
-
-    Widget cell = Container(
-      width: cellSize,
-      height: cellSize,
-      decoration: _buildCellDecoration(
-        isOccupied: isOccupied,
-        cellColor: cellColor,
-        isHighlighted: isHighlighted,
-        isValidTarget: isValidTarget,
-      ),
-      child: _buildCellContent(row, col, isOccupied),
-    );
-
-    // Add animations if needed
-    if (isAnimating) {
-      cell = _buildAnimatedCell(cell, row, col);
+  void _updateCachedGrid(GameState state, double cellSize) {
+    for (int row = 0; row < GameConstants.defaultGridSize; row++) {
+      for (int col = 0; col < GameConstants.defaultGridSize; col++) {
+        _cachedCells[row][col] = _buildCell(state, row, col, cellSize);
+      }
     }
-
-    // Add drag target functionality
-    if (widget.interactive) {
-      cell = _buildDragTarget(cell, row, col);
-    }
-
-    return cell;
   }
 
-  BoxDecoration _buildCellDecoration({
-    required bool isOccupied,
-    required Color? cellColor,
-    required bool isHighlighted,
-    required bool isValidTarget,
-  }) {
-    Color backgroundColor;
-    List<BoxShadow> shadows = [];
-    Border? border;
-
-    if (isOccupied && cellColor != null) {
-      backgroundColor = cellColor;
-      shadows = [
-        BoxShadow(
-          color: cellColor.withOpacity(0.3),
-          blurRadius: 4,
-          offset: const Offset(0, 2),
-        ),
-      ];
-    } else if (isValidTarget) {
-      backgroundColor = AppTheme.successColor.withOpacity(0.3);
-      border = Border.all(
-        color: AppTheme.successColor,
-        width: 2,
-      );
-    } else if (isHighlighted) {
-      backgroundColor = AppTheme.primaryColor.withOpacity(0.2);
-      border = Border.all(
-        color: AppTheme.primaryColor.withOpacity(0.5),
-        width: 1,
-      );
-    } else {
-      backgroundColor = AppTheme.surfaceColor.withOpacity(0.1);
-      border = Border.all(
-        color: Colors.white.withOpacity(0.1),
-        width: 1,
-      );
-    }
-
-    return BoxDecoration(
-      color: backgroundColor,
-      borderRadius: BorderRadius.circular(6),
-      border: border,
-      boxShadow: shadows,
-    );
-  }
-
-  Widget _buildCellContent(int row, int col, bool isOccupied) {
-    if (!isOccupied) {
-      return const SizedBox.shrink();
-    }
-
-    return Center(
-      child: Container(
-        width: 8,
-        height: 8,
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.8),
-          borderRadius: BorderRadius.circular(4),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAnimatedCell(Widget cell, int row, int col) {
-    final cellKey = '$row-$col';
+  Widget _buildCell(GameState state, int row, int col, double cellSize) {
+    final isOccupied = row < state.grid.length && 
+                      col < state.grid[row].length && 
+                      state.grid[row][col];
     
-    if (!_cellControllers.containsKey(cellKey)) {
+    final cellBlock = _getCellBlock(state, row, col);
+    final isAnimating = _animatingRows.contains(row) || _animatingCols.contains(col);
+    
+    return GestureDetector(
+      onTap: widget.interactive ? () => _handleCellTap(row, col) : null,
+      onPanStart: widget.interactive ? (details) => _handlePanStart(details, row, col) : null,
+      onPanUpdate: widget.interactive ? (details) => _handlePanUpdate(details, row, col) : null,
+      onPanEnd: widget.interactive ? (details) => _handlePanEnd(details, row, col) : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.all(1),
+        decoration: BoxDecoration(
+          color: _getCellColor(isOccupied, cellBlock, isAnimating),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: _getBorderColor(row, col),
+            width: 1,
+          ),
+          boxShadow: isOccupied ? [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ] : null,
+        ),
+        child: _buildCellContent(cellBlock, isAnimating, cellSize),
+      ),
+    );
+  }
+
+  Widget _buildCellContent(BlockEntity? block, bool isAnimating, double cellSize) {
+    if (block == null) return const SizedBox();
+
+    Widget content = Container(
+      width: cellSize * 0.8,
+      height: cellSize * 0.8,
+      decoration: BoxDecoration(
+        color: block.color,
+        borderRadius: BorderRadius.circular(2),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            block.color,
+            block.color.withOpacity(0.7),
+          ],
+        ),
+      ),
+    );
+
+    if (isAnimating) {
+      return AnimatedBuilder(
+        animation: _clearAnimation,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _clearAnimation.value,
+            child: Transform.rotate(
+              angle: (1 - _clearAnimation.value) * math.pi * 2,
+              child: content,
+            ),
+          );
+        },
+      );
+    }
+
+    return content;
+  }
+
+  Color _getCellColor(bool isOccupied, BlockEntity? block, bool isAnimating) {
+    if (isAnimating) {
+      return Colors.white.withOpacity(0.8);
+    }
+    
+    if (isOccupied && block != null) {
+      return block.color.withOpacity(0.1);
+    }
+    
+    return Colors.white.withOpacity(0.05);
+  }
+
+  Color _getBorderColor(int row, int col) {
+    if (_dragTargetRow == row && _dragTargetCol == col) {
+      return _isValidPlacement ? Colors.green : Colors.red;
+    }
+    
+    return Colors.white.withOpacity(0.1);
+  }
+
+  BlockEntity? _getCellBlock(GameState state, int row, int col) {
+    // Get block from active blocks that occupies this position
+    for (final block in state.activeBlocks) {
+      final positions = block.occupiedPositions;
+      if (positions.any((pos) => pos.x == col && pos.y == row)) {
+        return block;
+      }
+    }
+    return null;
+  }
+
+  double _calculateBoardSize(Size screenSize) {
+    final minDimension = math.min(screenSize.width, screenSize.height);
+    return (minDimension * 0.8).clamp(200.0, 400.0);
+  }
+
+  void _handleGameStateChange(GameState state) {
+    // Mark grid for update when state changes
+    _needsGridUpdate = true;
+    
+    // Handle animations for line clears
+    if (state.linesCleared > 0) {
+      _animateLineClear();
+    }
+    
+    // Update grid references
+    if (state.grid != _occupiedCells) {
+      _updateGridState(state);
+    }
+  }
+
+  void _updateGridState(GameState state) {
+    // Update grid state efficiently
+    for (int row = 0; row < state.grid.length && row < _occupiedCells.length; row++) {
+      for (int col = 0; col < state.grid[row].length && col < _occupiedCells[row].length; col++) {
+        _occupiedCells[row][col] = state.grid[row][col];
+      }
+    }
+  }
+
+  void _animateLineClear() {
+    _clearAnimationController.reset();
+    _clearAnimationController.forward().then((_) {
+      _clearAnimationController.reset();
+      _animatingRows.clear();
+      _animatingCols.clear();
+      setState(() {
+        _needsGridUpdate = true;
+      });
+    });
+  }
+
+  // Input handling methods
+  void _handleCellTap(int row, int col) {
+    if (!widget.interactive) return;
+    
+    // Trigger haptic feedback
+    HapticFeedback.lightImpact();
+    
+    // Handle cell selection logic
+    widget.onBlockPlaced?.call(_createDummyBlock(), row, col);
+  }
+
+  void _handlePanStart(DragStartDetails details, int row, int col) {
+    if (!widget.interactive) return;
+    
+    _dragOffset = details.localPosition;
+    _dragTargetRow = row;
+    _dragTargetCol = col;
+    
+    // Start hover animation
+    _hoverController.forward();
+  }
+
+  void _handlePanUpdate(DragUpdateDetails details, int row, int col) {
+    if (!widget.interactive) return;
+    
+    // Update drag target position
+    setState(() {
+      _dragTargetRow = row;
+      _dragTargetCol = col;
+      _isValidPlacement = _validatePlacement(row, col);
+    });
+  }
+
+  void _handlePanEnd(DragEndDetails details, int row, int col) {
+    if (!widget.interactive) return;
+    
+    // Reset hover animation
+    _hoverController.reverse();
+    
+    if (_isValidPlacement) {
+      // Trigger placement animation
+      _placementController.forward().then((_) {
+        _placementController.reset();
+      });
+      
+      widget.onBlockPlaced?.call(_createDummyBlock(), row, col);
+    }
+    
+    // Reset drag state
+    setState(() {
+      _dragTargetRow = null;
+      _dragTargetCol = null;
+      _isValidPlacement = false;
+      _dragOffset = null;
+    });
+  }
+
+  bool _validatePlacement(int row, int col) {
+    // Validate if block can be placed at this position
+    return row >= 0 && 
+           row < GameConstants.defaultGridSize && 
+           col >= 0 && 
+           col < GameConstants.defaultGridSize &&
+           !_occupiedCells[row][col];
+  }
+
+  BlockEntity _createDummyBlock() {
+    // Create a dummy block for testing
+    return BlockEntity.create(
+      type: BlockType.square,
+      position: Position(0, 0),
+    );
+  }
+
+  // Performance optimization methods
+  void _createCellController(String key) {
+    if (!_cellControllers.containsKey(key)) {
       final controller = AnimationController(
         duration: const Duration(milliseconds: 300),
         vsync: this,
       );
-      _cellControllers[cellKey] = controller;
+      _cellControllers[key] = controller;
     }
+  }
 
-    final controller = _cellControllers[cellKey]!;
+  void _disposeCellController(String key) {
+    final controller = _cellControllers.remove(key);
+    controller?.dispose();
+  }
+
+  void _optimizeMemoryUsage() {
+    // Clean up unused cell controllers periodically
+    final activeKeys = <String>{};
     
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: 1.0 - (controller.value * 0.2),
-          child: Opacity(
-            opacity: 1.0 - controller.value,
-            child: cell,
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildDragTarget(Widget cell, int row, int col) {
-    return DragTarget<flame_block.BlockComponent>(
-      onWillAccept: (block) {
-        return _canPlaceBlock(block, row, col);
-      },
-      onAccept: (block) {
-        _placeBlock(block, row, col);
-      },
-      onMove: (details) {
-        setState(() {
-          _dragTargetRow = row;
-          _dragTargetCol = col;
-          _isValidPlacement = _canPlaceBlock(details.data, row, col);
-        });
-      },
-      onLeave: (block) {
-        setState(() {
-          _dragTargetRow = null;
-          _dragTargetCol = null;
-          _isValidPlacement = false;
-        });
-      },
-      builder: (context, candidateData, rejectedData) {
-        return GestureDetector(
-          onTap: widget.interactive ? () => _onCellTapped(row, col) : null,
-          child: cell,
-        );
-      },
-    );
-  }
-
-  bool _shouldHighlightCell(int row, int col) {
-    // Highlight border cells for visual reference
-    return row == 0 || row == GameConstants.gridSize - 1 ||
-           col == 0 || col == GameConstants.gridSize - 1;
-  }
-
-  bool _isValidPlacementTarget(int row, int col) {
-    if (_draggingBlock == null) return false;
-    return _dragTargetRow == row && _dragTargetCol == col && _isValidPlacement;
-  }
-
-  bool _canPlaceBlock(flame_block.BlockComponent? block, int row, int col) {
-    if (block == null) return false;
-
-    // Check if block fits within grid bounds
-    for (int blockRow = 0; blockRow < block.shape.length; blockRow++) {
-      for (int blockCol = 0; blockCol < block.shape[blockRow].length; blockCol++) {
-        if (block.shape[blockRow][blockCol] == 1) {
-          final targetRow = row + blockRow;
-          final targetCol = col + blockCol;
-          
-          // Check bounds
-          if (targetRow >= GameConstants.gridSize || 
-              targetCol >= GameConstants.gridSize ||
-              targetRow < 0 || 
-              targetCol < 0) {
-            return false;
-          }
-          
-          // Check if cell is already occupied
-          if (_occupiedCells[targetRow][targetCol]) {
-            return false;
-          }
+    // Add logic to determine which controllers are still needed
+    for (int row = 0; row < GameConstants.defaultGridSize; row++) {
+      for (int col = 0; col < GameConstants.defaultGridSize; col++) {
+        if (_occupiedCells[row][col]) {
+          activeKeys.add('$row-$col');
         }
       }
     }
     
-    return true;
-  }
-
-  void _placeBlock(flame_block.BlockComponent block, int row, int col) {
-    if (!_canPlaceBlock(block, row, col)) return;
-
-    // Create BlockEntity from Flame component
-    final blockEntity = BlockEntity(
-      id: block.id,
-      shape: block.shape,
-      color: block.color,
-      position: BlockPosition(row: row, col: col),
-    );
-
-    // Update grid state
-    for (int blockRow = 0; blockRow < block.shape.length; blockRow++) {
-      for (int blockCol = 0; blockCol < block.shape[blockRow].length; blockCol++) {
-        if (block.shape[blockRow][blockCol] == 1) {
-          final targetRow = row + blockRow;
-          final targetCol = col + blockCol;
-          
-          _occupiedCells[targetRow][targetCol] = true;
-          _cellColors[targetRow][targetCol] = block.color;
-          _cellBlocks[targetRow][targetCol] = blockEntity;
-        }
-      }
-    }
-
-    // Trigger placement callback
-    widget.onBlockPlaced?.call(blockEntity, row, col);
-
-    // Check for line clears
-    _checkForLineClear();
-
-    setState(() {
-      _draggingBlock = null;
-      _dragTargetRow = null;
-      _dragTargetCol = null;
-      _isValidPlacement = false;
-    });
-  }
-
-  void _checkForLineClear() {
-    final clearedRows = <int>[];
-    final clearedCols = <int>[];
-
-    // Check rows
-    for (int row = 0; row < GameConstants.gridSize; row++) {
-      bool isRowComplete = true;
-      for (int col = 0; col < GameConstants.gridSize; col++) {
-        if (!_occupiedCells[row][col]) {
-          isRowComplete = false;
-          break;
-        }
-      }
-      if (isRowComplete) {
-        clearedRows.add(row);
-      }
-    }
-
-    // Check columns
-    for (int col = 0; col < GameConstants.gridSize; col++) {
-      bool isColComplete = true;
-      for (int row = 0; row < GameConstants.gridSize; row++) {
-        if (!_occupiedCells[row][col]) {
-          isColComplete = false;
-          break;
-        }
-      }
-      if (isColComplete) {
-        clearedCols.add(col);
-      }
-    }
-
-    if (clearedRows.isNotEmpty || clearedCols.isNotEmpty) {
-      _animateLineClear(clearedRows, clearedCols);
+    // Dispose unused controllers
+    final keysToRemove = _cellControllers.keys.where((key) => !activeKeys.contains(key)).toList();
+    for (final key in keysToRemove) {
+      _disposeCellController(key);
     }
   }
 
-  void _animateLineClear(List<int> rows, List<int> cols) {
-    setState(() {
-      _animatingRows.addAll(rows);
-      _animatingCols.addAll(cols);
-    });
-
-    // Start animation for affected cells
-    for (int row in rows) {
-      for (int col = 0; col < GameConstants.gridSize; col++) {
-        final cellKey = '$row-$col';
-        _cellControllers[cellKey]?.forward();
-      }
-    }
-
-    for (int col in cols) {
-      for (int row = 0; row < GameConstants.gridSize; row++) {
-        final cellKey = '$row-$col';
-        _cellControllers[cellKey]?.forward();
-      }
-    }
-
-    // Clear cells after animation
-    Future.delayed(const Duration(milliseconds: 300), () {
-      _clearLines(rows, cols);
-    });
-  }
-
-  void _clearLines(List<int> rows, List<int> cols) {
-    // Clear rows
-    for (int row in rows) {
-      for (int col = 0; col < GameConstants.gridSize; col++) {
-        _occupiedCells[row][col] = false;
-        _cellColors[row][col] = null;
-        _cellBlocks[row][col] = null;
-        
-        final cellKey = '$row-$col';
-        _cellControllers[cellKey]?.reset();
-      }
-    }
-
-    // Clear columns
-    for (int col in cols) {
-      for (int row = 0; row < GameConstants.gridSize; row++) {
-        _occupiedCells[row][col] = false;
-        _cellColors[row][col] = null;
-        _cellBlocks[row][col] = null;
-        
-        final cellKey = '$row-$col';
-        _cellControllers[cellKey]?.reset();
-      }
-    }
-
-    setState(() {
-      _animatingRows.removeAll(rows);
-      _animatingCols.removeAll(cols);
-    });
-
-    // Trigger callback
-    widget.onLinesCleared?.call(rows, cols);
-  }
-
-  void _onCellTapped(int row, int col) {
-    // Handle cell tap if needed
-    // Could be used for power-ups or special actions
-  }
-
-  void _updateGridFromGameState(GameStateLoaded state) {
-    // Update grid from game state if needed
-    // This would be called when the game state changes
-  }
-
-  // Public methods for external control
-  void clearCell(int row, int col) {
-    if (row >= 0 && row < GameConstants.gridSize &&
-        col >= 0 && col < GameConstants.gridSize) {
-      setState(() {
-        _occupiedCells[row][col] = false;
-        _cellColors[row][col] = null;
-        _cellBlocks[row][col] = null;
-      });
-    }
-  }
-
-  void resetBoard() {
-    setState(() {
-      _initializeGrid();
-      _animatingRows.clear();
-      _animatingCols.clear();
-    });
+  @override
+  void didUpdateWidget(GameBoard oldWidget) {
+    super.didUpdateWidget(oldWidget);
     
-    for (final controller in _cellControllers.values) {
-      controller.reset();
+    // Optimize memory when widget updates
+    _optimizeMemoryUsage();
+    
+    // Mark for update if game instance changed
+    if (oldWidget.game != widget.game) {
+      _needsGridUpdate = true;
     }
-  }
-
-  void highlightPossiblePlacements(flame_block.BlockComponent block) {
-    // Could be used to show valid placement positions
-    setState(() {
-      _draggingBlock = block;
-    });
-  }
-
-  void clearHighlights() {
-    setState(() {
-      _draggingBlock = null;
-      _dragTargetRow = null;
-      _dragTargetCol = null;
-      _isValidPlacement = false;
-    });
   }
 }
