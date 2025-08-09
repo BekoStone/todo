@@ -1,230 +1,204 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:puzzle_box/core/theme/app_theme.dart';
-import 'package:puzzle_box/core/utils/responsive_utils.dart';
+import '../../../core/theme/colors.dart';
+import '../../../core/utils/responsive_utils.dart';
 
-/// A customizable gradient button with animations and haptic feedback
 class GradientButton extends StatefulWidget {
-  /// Button child widget (usually Text or Icon)
-  final Widget child;
-  
-  /// Callback when button is pressed
+  final String text;
   final VoidCallback? onPressed;
-  
-  /// Gradient for the button background
+  final IconData? icon;
+  final Widget? child;
   final Gradient? gradient;
-  
-  /// Button width (defaults to auto-sizing)
+  final Color? backgroundColor;
+  final Color? textColor;
   final double? width;
-  
-  /// Button height
   final double? height;
-  
-  /// Border radius
-  final double borderRadius;
-  
-  /// Padding inside the button
   final EdgeInsetsGeometry? padding;
-  
-  /// Margin around the button
-  final EdgeInsetsGeometry? margin;
-  
-  /// Shadow elevation
-  final double elevation;
-  
-  /// Whether button is enabled
+  final BorderRadius? borderRadius;
+  final List<BoxShadow>? boxShadow;
   final bool enabled;
-  
-  /// Animation duration for press effect
-  final Duration animationDuration;
-  
-  /// Scale factor when pressed
-  final double pressedScale;
-  
-  /// Whether to show ripple effect
-  final bool showRipple;
-  
-  /// Whether to provide haptic feedback
-  final bool hapticFeedback;
-  
-  /// Custom border
-  final BorderSide? border;
-  
-  /// Icon to show on the left (optional)
-  final IconData? leadingIcon;
-  
-  /// Icon to show on the right (optional)
-  final IconData? trailingIcon;
-  
-  /// Icon size
-  final double? iconSize;
-  
-  /// Spacing between icon and text
-  final double iconSpacing;
+  final bool isLoading;
 
   const GradientButton({
     super.key,
-    required this.child,
-    required this.onPressed,
+    required this.text,
+    this.onPressed,
+    this.icon,
+    this.child,
     this.gradient,
+    this.backgroundColor,
+    this.textColor,
     this.width,
     this.height,
-    this.borderRadius = 12.0,
     this.padding,
-    this.margin,
-    this.elevation = 4.0,
+    this.borderRadius,
+    this.boxShadow,
     this.enabled = true,
-    this.animationDuration = const Duration(milliseconds: 150),
-    this.pressedScale = 0.95,
-    this.showRipple = true,
-    this.hapticFeedback = true,
-    this.border,
-    this.leadingIcon,
-    this.trailingIcon,
-    this.iconSize,
-    this.iconSpacing = 8.0,
+    this.isLoading = false,
   });
 
-  /// Factory constructor for primary button style
+  /// Primary gradient button with default styling
   factory GradientButton.primary({
-    required Widget child,
-    required VoidCallback? onPressed,
+    required String text,
+    VoidCallback? onPressed,
+    IconData? icon,
+    Widget? child,
     double? width,
     double? height,
-    EdgeInsetsGeometry? padding,
-    EdgeInsetsGeometry? margin,
     bool enabled = true,
-    IconData? leadingIcon,
-    IconData? trailingIcon,
+    bool isLoading = false,
   }) {
     return GradientButton(
+      text: text,
       onPressed: onPressed,
-      gradient: AppTheme.primaryGradient,
+      icon: icon,
+      child: child,
       width: width,
       height: height,
-      padding: padding,
-      margin: margin,
       enabled: enabled,
-      leadingIcon: leadingIcon,
-      trailingIcon: trailingIcon,
-      child: child,
+      isLoading: isLoading,
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [AppColors.primary, AppColors.secondary],
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: AppColors.primary.withOpacity(0.3),
+          blurRadius: 8,
+          offset: const Offset(0, 4),
+        ),
+      ],
     );
   }
 
-  /// Factory constructor for secondary button style
+  /// Secondary gradient button
   factory GradientButton.secondary({
-    required Widget child,
-    required VoidCallback? onPressed,
+    required String text,
+    VoidCallback? onPressed,
+    IconData? icon,
+    Widget? child,
     double? width,
     double? height,
-    EdgeInsetsGeometry? padding,
-    EdgeInsetsGeometry? margin,
     bool enabled = true,
-    IconData? leadingIcon,
-    IconData? trailingIcon,
+    bool isLoading = false,
   }) {
     return GradientButton(
+      text: text,
       onPressed: onPressed,
-      gradient: AppTheme.secondaryGradient,
+      icon: icon,
+      child: child,
       width: width,
       height: height,
-      padding: padding,
-      margin: margin,
       enabled: enabled,
-      leadingIcon: leadingIcon,
-      trailingIcon: trailingIcon,
-      child: child,
+      isLoading: isLoading,
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [AppColors.info, AppColors.primary],
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: AppColors.info.withOpacity(0.3),
+          blurRadius: 8,
+          offset: const Offset(0, 4),
+        ),
+      ],
     );
   }
 
-  /// Factory constructor for success button style
+  /// Success style button
   factory GradientButton.success({
-    required Widget child,
-    required VoidCallback? onPressed,
+    required String text,
+    VoidCallback? onPressed,
+    IconData? icon,
+    Widget? child,
     double? width,
     double? height,
-    EdgeInsetsGeometry? padding,
-    EdgeInsetsGeometry? margin,
     bool enabled = true,
-    IconData? leadingIcon,
-    IconData? trailingIcon,
+    bool isLoading = false,
   }) {
     return GradientButton(
+      text: text,
       onPressed: onPressed,
-      gradient: const LinearGradient(
-        colors: [AppTheme.successColor, Color(0xFF66BB6A)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
+      icon: icon,
+      child: child,
       width: width,
       height: height,
-      padding: padding,
-      margin: margin,
       enabled: enabled,
-      leadingIcon: leadingIcon,
-      trailingIcon: trailingIcon,
-      child: child,
+      isLoading: isLoading,
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [AppColors.success, AppColors.info],
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: AppColors.success.withOpacity(0.3),
+          blurRadius: 8,
+          offset: const Offset(0, 4),
+        ),
+      ],
     );
   }
 
-  /// Factory constructor for danger button style
-  factory GradientButton.danger({
-    required Widget child,
-    required VoidCallback? onPressed,
+  /// Warning style button
+  factory GradientButton.warning({
+    required String text,
+    VoidCallback? onPressed,
+    IconData? icon,
+    Widget? child,
     double? width,
     double? height,
-    EdgeInsetsGeometry? padding,
-    EdgeInsetsGeometry? margin,
     bool enabled = true,
-    IconData? leadingIcon,
-    IconData? trailingIcon,
+    bool isLoading = false,
   }) {
     return GradientButton(
+      text: text,
       onPressed: onPressed,
-      gradient: const LinearGradient(
-        colors: [Colors.red, Color(0xFFE57373)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
+      icon: icon,
+      child: child,
       width: width,
       height: height,
-      padding: padding,
-      margin: margin,
       enabled: enabled,
-      leadingIcon: leadingIcon,
-      trailingIcon: trailingIcon,
-      child: child,
+      isLoading: isLoading,
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [AppColors.warning, AppColors.error],
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: AppColors.warning.withOpacity(0.3),
+          blurRadius: 8,
+          offset: const Offset(0, 4),
+        ),
+      ],
     );
   }
 
-  /// Factory constructor for outlined button style
+  /// Outlined button style
   factory GradientButton.outlined({
-    required Widget child,
-    required VoidCallback? onPressed,
+    required String text,
+    VoidCallback? onPressed,
+    IconData? icon,
+    Widget? child,
     double? width,
     double? height,
-    EdgeInsetsGeometry? padding,
-    EdgeInsetsGeometry? margin,
     bool enabled = true,
-    Color borderColor = AppTheme.primaryColor,
-    IconData? leadingIcon,
-    IconData? trailingIcon,
+    bool isLoading = false,
   }) {
     return GradientButton(
+      text: text,
       onPressed: onPressed,
-      gradient: const LinearGradient(
-        colors: [Colors.transparent, Colors.transparent],
-      ),
-      border: BorderSide(color: borderColor, width: 2),
+      icon: icon,
+      child: child,
       width: width,
       height: height,
-      padding: padding,
-      margin: margin,
       enabled: enabled,
-      elevation: 0,
-      leadingIcon: leadingIcon,
-      trailingIcon: trailingIcon,
-      child: child,
+      isLoading: isLoading,
+      backgroundColor: Colors.transparent,
+      textColor: AppColors.primary,
     );
   }
 
@@ -233,315 +207,338 @@ class GradientButton extends StatefulWidget {
 }
 
 class _GradientButtonState extends State<GradientButton>
-    with TickerProviderStateMixin {
-  late AnimationController _scaleController;
-  late AnimationController _shimmerController;
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
-  late Animation<double> _shimmerAnimation;
-  
+  late Animation<double> _opacityAnimation;
+
   bool _isPressed = false;
 
   @override
   void initState() {
     super.initState();
-    _setupAnimations();
-  }
-
-  void _setupAnimations() {
-    _scaleController = AnimationController(
-      duration: widget.animationDuration,
-      vsync: this,
-    );
-
-    _shimmerController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
+    
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 150),
       vsync: this,
     );
 
     _scaleAnimation = Tween<double>(
       begin: 1.0,
-      end: widget.pressedScale,
+      end: 0.95,
     ).animate(CurvedAnimation(
-      parent: _scaleController,
+      parent: _animationController,
       curve: Curves.easeInOut,
     ));
 
-    _shimmerAnimation = Tween<double>(
-      begin: -1.0,
-      end: 2.0,
+    _opacityAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.8,
     ).animate(CurvedAnimation(
-      parent: _shimmerController,
+      parent: _animationController,
       curve: Curves.easeInOut,
     ));
   }
 
   @override
   void dispose() {
-    _scaleController.dispose();
-    _shimmerController.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
-  void _onTapDown(TapDownDetails details) {
-    if (!widget.enabled || widget.onPressed == null) return;
-    
-    setState(() {
-      _isPressed = true;
-    });
-    
-    _scaleController.forward();
-    
-    if (widget.hapticFeedback) {
+  void _handleTapDown(TapDownDetails details) {
+    if (widget.enabled && !widget.isLoading) {
+      setState(() {
+        _isPressed = true;
+      });
+      _animationController.forward();
       HapticFeedback.lightImpact();
     }
   }
 
-  void _onTapUp(TapUpDetails details) {
-    _onTapEnd();
+  void _handleTapUp(TapUpDetails details) {
+    _handleTapEnd();
   }
 
-  void _onTapCancel() {
-    _onTapEnd();
+  void _handleTapCancel() {
+    _handleTapEnd();
   }
 
-  void _onTapEnd() {
-    if (!mounted) return;
-    
-    setState(() {
-      _isPressed = false;
-    });
-    
-    _scaleController.reverse();
+  void _handleTapEnd() {
+    if (_isPressed) {
+      setState(() {
+        _isPressed = false;
+      });
+      _animationController.reverse();
+    }
   }
 
-  void _onTap() {
-    if (!widget.enabled || widget.onPressed == null) return;
-    
-    widget.onPressed!();
-    
-    // Add shimmer effect on successful tap
-    _shimmerController.forward().then((_) {
-      _shimmerController.reset();
-    });
+  void _handleTap() {
+    if (widget.enabled && !widget.isLoading && widget.onPressed != null) {
+      HapticFeedback.mediumImpact();
+      widget.onPressed!();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDisabled = !widget.enabled || widget.onPressed == null;
-    
-    return Container(
-      margin: widget.margin,
-      child: AnimatedBuilder(
-        animation: _scaleAnimation,
-        builder: (context, child) {
-          return Transform.scale(
-            scale: _scaleAnimation.value,
-            child: _buildButton(isDisabled),
-          );
-        },
-      ),
-    );
-  }
+    final isEnabled = widget.enabled && !widget.isLoading;
+    final height = widget.height ?? ResponsiveUtils.hp(6);
+    final borderRadius = widget.borderRadius ?? BorderRadius.circular(12);
 
-  Widget _buildButton(bool isDisabled) {
-    return Container(
-      width: widget.width,
-      height: widget.height ?? ResponsiveUtils.hp(6),
-      decoration: BoxDecoration(
-        gradient: isDisabled
-            ? const LinearGradient(
-                colors: [Colors.grey, Colors.grey],
-              )
-            : widget.gradient ?? AppTheme.primaryGradient,
-        borderRadius: BorderRadius.circular(widget.borderRadius),
-        border: widget.border != null
-            ? Border.all(
-                color: isDisabled 
-                    ? Colors.grey.withOpacity(0.5)
-                    : widget.border!.color,
-                width: widget.border!.width,
-              )
-            : null,
-        boxShadow: widget.elevation > 0 && !isDisabled
-            ? [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: widget.elevation * 2,
-                  offset: Offset(0, widget.elevation),
-                ),
-              ]
-            : null,
-      ),
-      child: Stack(
-        children: [
-          // Shimmer effect
-          if (!isDisabled)
-            AnimatedBuilder(
-              animation: _shimmerAnimation,
-              builder: (context, child) {
-                return Positioned.fill(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(widget.borderRadius),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.transparent,
-                            Colors.white.withOpacity(0.3),
-                            Colors.transparent,
-                          ],
-                          stops: const [0.0, 0.5, 1.0],
-                          begin: Alignment(_shimmerAnimation.value - 1, 0),
-                          end: Alignment(_shimmerAnimation.value, 0),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          
-          // Button content
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: isDisabled ? null : _onTap,
-              onTapDown: isDisabled ? null : _onTapDown,
-              onTapUp: isDisabled ? null : _onTapUp,
-              onTapCancel: isDisabled ? null : _onTapCancel,
-              borderRadius: BorderRadius.circular(widget.borderRadius),
-              splashColor: widget.showRipple 
-                  ? Colors.white.withOpacity(0.2)
-                  : Colors.transparent,
-              highlightColor: Colors.white.withOpacity(0.1),
+    return AnimatedBuilder(
+      animation: _animationController,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: _scaleAnimation.value,
+          child: Opacity(
+            opacity: _opacityAnimation.value,
+            child: GestureDetector(
+              onTapDown: _handleTapDown,
+              onTapUp: _handleTapUp,
+              onTapCancel: _handleTapCancel,
+              onTap: _handleTap,
               child: Container(
+                width: widget.width,
+                height: height,
                 padding: widget.padding ?? EdgeInsets.symmetric(
-                  horizontal: ResponsiveUtils.wp(6),
-                  vertical: ResponsiveUtils.hp(1.5),
+                  horizontal: ResponsiveUtils.wp(4),
+                  vertical: ResponsiveUtils.hp(1),
                 ),
-                child: _buildContent(isDisabled),
+                decoration: BoxDecoration(
+                  gradient: isEnabled ? widget.gradient : null,
+                  color: !isEnabled 
+                      ? Colors.grey.withOpacity(0.3)
+                      : widget.backgroundColor,
+                  borderRadius: borderRadius,
+                  border: widget.gradient == null && widget.backgroundColor == Colors.transparent
+                      ? Border.all(
+                          color: isEnabled ? AppColors.primary : Colors.grey,
+                          width: 2,
+                        )
+                      : null,
+                  boxShadow: isEnabled ? widget.boxShadow : null,
+                ),
+                child: _buildButtonContent(),
               ),
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildContent(bool isDisabled) {
-    final widgets = <Widget>[];
-    
-    // Leading icon
-    if (widget.leadingIcon != null) {
-      widgets.add(
-        Icon(
-          widget.leadingIcon,
-          size: widget.iconSize ?? ResponsiveUtils.sp(18),
-          color: isDisabled ? Colors.grey.shade400 : Colors.white,
-        ),
-      );
-      widgets.add(SizedBox(width: widget.iconSpacing));
-    }
-    
-    // Main content
-    widgets.add(
-      Flexible(
-        child: DefaultTextStyle(
-          style: TextStyle(
-            color: isDisabled ? Colors.grey.shade400 : Colors.white,
+  Widget _buildButtonContent() {
+    if (widget.isLoading) {
+      return Center(
+        child: SizedBox(
+          width: ResponsiveUtils.sp(20),
+          height: ResponsiveUtils.sp(20),
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(
+              widget.textColor ?? Colors.white,
+            ),
           ),
-          child: widget.child,
-        ),
-      ),
-    );
-    
-    // Trailing icon
-    if (widget.trailingIcon != null) {
-      widgets.add(SizedBox(width: widget.iconSpacing));
-      widgets.add(
-        Icon(
-          widget.trailingIcon,
-          size: widget.iconSize ?? ResponsiveUtils.sp(18),
-          color: isDisabled ? Colors.grey.shade400 : Colors.white,
         ),
       );
     }
-    
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: widgets,
+
+    if (widget.child != null) {
+      return Center(child: widget.child!);
+    }
+
+    final textColor = widget.enabled 
+        ? (widget.textColor ?? Colors.white)
+        : Colors.grey;
+
+    final textStyle = TextStyle(
+      fontSize: ResponsiveUtils.sp(16),
+      fontWeight: FontWeight.bold,
+      color: textColor,
+      letterSpacing: 0.5,
+    );
+
+    if (widget.icon != null) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            widget.icon!,
+            color: textColor,
+            size: ResponsiveUtils.sp(20),
+          ),
+          SizedBox(width: ResponsiveUtils.wp(2)),
+          Text(
+            widget.text,
+            style: textStyle,
+          ),
+        ],
+      );
+    }
+
+    return Center(
+      child: Text(
+        widget.text,
+        style: textStyle,
+        textAlign: TextAlign.center,
+      ),
     );
   }
 }
 
-/// A floating action button with gradient background
-class GradientFAB extends StatefulWidget {
-  final VoidCallback? onPressed;
+/// Extended gradient button with more customization options
+class CustomGradientButton extends StatelessWidget {
   final Widget child;
+  final VoidCallback? onPressed;
   final Gradient? gradient;
-  final double? elevation;
+  final Color? backgroundColor;
+  final double? width;
+  final double? height;
+  final EdgeInsetsGeometry? padding;
+  final EdgeInsetsGeometry? margin;
+  final BorderRadius? borderRadius;
+  final List<BoxShadow>? boxShadow;
+  final Border? border;
+  final bool enabled;
+
+  const CustomGradientButton({
+    super.key,
+    required this.child,
+    this.onPressed,
+    this.gradient,
+    this.backgroundColor,
+    this.width,
+    this.height,
+    this.padding,
+    this.margin,
+    this.borderRadius,
+    this.boxShadow,
+    this.border,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      margin: margin,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? onPressed : null,
+          borderRadius: borderRadius ?? BorderRadius.circular(12),
+          child: Ink(
+            padding: padding ?? const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: enabled ? gradient : null,
+              color: !enabled 
+                  ? Colors.grey.withOpacity(0.3)
+                  : backgroundColor,
+              borderRadius: borderRadius ?? BorderRadius.circular(12),
+              border: border,
+              boxShadow: enabled ? boxShadow : null,
+            ),
+            child: Center(child: child),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Floating action gradient button
+class FloatingGradientButton extends StatefulWidget {
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final Gradient? gradient;
+  final double size;
+  final String? tooltip;
   final String? heroTag;
 
-  const GradientFAB({
+  const FloatingGradientButton({
     super.key,
-    required this.onPressed,
-    required this.child,
+    required this.icon,
+    this.onPressed,
     this.gradient,
-    this.elevation,
+    this.size = 56.0,
+    this.tooltip,
     this.heroTag,
   });
 
   @override
-  State<GradientFAB> createState() => _GradientFABState();
+  State<FloatingGradientButton> createState() => _FloatingGradientButtonState();
 }
 
-class _GradientFABState extends State<GradientFAB>
+class _FloatingGradientButtonState extends State<FloatingGradientButton>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scaleAnimation;
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 150),
+    
+    _pulseController = AnimationController(
+      duration: const Duration(seconds: 2),
       vsync: this,
     );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(_controller);
+
+    _pulseAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.1,
+    ).animate(CurvedAnimation(
+      parent: _pulseController,
+      curve: Curves.easeInOut,
+    ));
+
+    _pulseController.repeat(reverse: true);
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: _scaleAnimation,
+      animation: _pulseAnimation,
       builder: (context, child) {
         return Transform.scale(
-          scale: _scaleAnimation.value,
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: widget.gradient ?? AppTheme.primaryGradient,
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
-                  blurRadius: widget.elevation ?? 8,
-                  offset: const Offset(0, 4),
+          scale: _pulseAnimation.value,
+          child: FloatingActionButton(
+            onPressed: widget.onPressed,
+            tooltip: widget.tooltip,
+            heroTag: widget.heroTag,
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            child: Container(
+              width: widget.size,
+              height: widget.size,
+              decoration: BoxDecoration(
+                gradient: widget.gradient ?? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppColors.primary, AppColors.secondary],
                 ),
-              ],
-            ),
-            child: FloatingActionButton(
-              onPressed: widget.onPressed,
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              heroTag: widget.heroTag,
-              child: widget.child,
+                borderRadius: BorderRadius.circular(widget.size / 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primary.withOpacity(0.4),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Icon(
+                widget.icon,
+                color: Colors.white,
+                size: widget.size * 0.4,
+              ),
             ),
           ),
         );

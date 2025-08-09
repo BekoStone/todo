@@ -4,19 +4,21 @@ import 'package:flame/effects.dart';
 import 'package:flutter/material.dart';
 import 'package:puzzle_box/domain/entities/game_session_entity.dart';
 import 'package:puzzle_box/domain/entities/player_stats_entity.dart';
+import 'package:puzzle_box/domain/entities/achievement_entity.dart';
 import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 
 import '../../../core/theme/colors.dart';
-import '../../../core/constants/game_constants.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/performance_utils.dart';
+import '../box_hooks_game.dart';
 import 'grid_component.dart';
 import 'block_component.dart';
 import 'particle_component.dart';
 
 /// The main game world component that manages the game grid, blocks, and core gameplay logic.
 /// Follows Clean Architecture by separating concerns and using cubits for state management.
-class GameWorld extends PositionComponent with HasGameRef {
+class GameWorld extends PositionComponent with HasGameRef<BoxHooksGame> {
   // Configuration
   final int gridSize;
   final double cellSize;
@@ -27,48 +29,45 @@ class GameWorld extends PositionComponent with HasGameRef {
   
   // Core components
   late final GridComponent _gridComponent;
-  late final List<BlockComponent> _activeBlocks;
+  final List<BlockComponent> _activeBlocks = [];
   late final List<List<BlockComponent?>> _placedBlocks;
   
   // Game state
   GameSession? _currentSession;
   PlayerStats? _currentPlayerStats;
-  bool _isGameActive = false;
   
-  // Performance tracking
-  final PerformanceMonitor _performanceMonitor = PerformanceMonitor();
-  
-  // Animation and effects
+  // Visual effects
   final List<ParticleComponent> _particles = [];
-  late final ComponentSet<Component> _effects;
+  final List<Component> _effectComponents = [];
+  
+  // Performance settings
+  bool _particlesEnabled = true;
+  bool _animationsEnabled = true;
+  bool _shadowsEnabled = false;
+  
+  // Animation controllers
+  final List<Effect> _activeEffects = [];
 
   GameWorld({
     required this.gridSize,
     required this.cellSize,
     required this.gameCubit,
     required this.playerCubit,
-  }) {
-    _activeBlocks = [];
-    _placedBlocks = List.generate(
-      gridSize,
-      (i) => List.generate(gridSize, (j) => null),
-    );
-    _effects = ComponentSet<Component>();
+  }) : super() {
+    _initializeGameWorld();
   }
 
   @override
   Future<void> onLoad() async {
     super.onLoad();
     
-    await _initializeComponents();
-    await _setupGrid();
+    // Initialize placed blocks grid
+    _placedBlocks = List.generate(
+      gridSize,
+      (_) => List.filled(gridSize, null),
+    );
     
-    debugPrint('🌍 GameWorld loaded - Grid: ${gridSize}x$gridSize, Cell: ${cellSize}px');
-  }
-
-  /// Initialize all child components
-  Future<void> _initializeComponents() async {
-    // Initialize grid component
+    // Create and add grid component
     _gridComponent = GridComponent(
       gridSize: gridSize,
       cellSize: cellSize,
@@ -76,209 +75,186 @@ class GameWorld extends PositionComponent with HasGameRef {
       onBlockDropped: _handleBlockDropped,
     );
     
-    add(_gridComponent);
+    await add(_gridComponent);
     
-    // Add effects container
-    add(_effects);
+    // Position the grid in the center of the world
+    _positionGrid();
     
-    debugPrint('🔧 GameWorld components initialized');
+    debugPrint('🌍 GameWorld loaded');
   }
 
-  /// Setup the game grid layout and positioning
-  Future<void> _setupGrid() async {
-    // Center the grid in the available space
+  @override
+  void update(double dt) {
+    super.update(dt);
+    
+    // Update particles
+    _updateParticles(dt);
+    
+    // Update effects
+    _updateEffects(dt);
+    
+    // Check for completed lines
+    _checkForCompletedLines();
+    
+    // Update animations
+    if (_animationsEnabled) {
+      _updateAnimations(dt);
+    }
+  }
+
+  /// Initialize the game world
+  void _initializeGameWorld() {
+    debugPrint('🌍 Initializing GameWorld');
+  }
+
+  /// Position the grid component in the center
+  void _positionGrid() {
     final gameSize = gameRef.size;
-    final gridWidth = gridSize * cellSize + (gridSize - 1) * GameConstants.gridSpacing;
-    final gridHeight = gridWidth; // Square grid
+    final gridTotalSize = gridSize * cellSize + (gridSize - 1) * AppConstants.cellSpacing;
     
-    final offsetX = (gameSize.x - gridWidth) / 2;
-    final offsetY = (gameSize.y - gridHeight) / 2;
-    
-    _gridComponent.position = Vector2(offsetX, offsetY);
-    
-    debugPrint('📐 Grid positioned at ($offsetX, $offsetY)');
+    _gridComponent.position = Vector2(
+      (gameSize.x - gridTotalSize) / 2,
+      (gameSize.y - gridTotalSize) / 2,
+    );
   }
 
-  /// Start a new game session
-  void startGame(GameSession session) {
-    _performanceMonitor.startTracking('game_session');
+  // ========================================
+  // GAME STATE MANAGEMENT
+  // ========================================
+
+  /// Update from game state changes
+  void updateFromGameState(GameState gameState) {
+    _currentSession = gameState.currentSession;
     
-    _currentSession = session;
-    _isGameActive = true;
+    // Update grid state
+    if (gameState.grid.isNotEmpty) {
+      _updateGridFromState(gameState.grid);
+    }
     
-    _resetGameState();
-    _spawnInitialBlocks();
+    // Update active blocks
+    _updateActiveBlocks(gameState.activeBlocks);
     
-    debugPrint('🚀 Game started - Session ID: ${session.id}');
+    // Update visual elements based on game state
+    _updateVisualElements(gameState);
   }
 
-  /// End the current game session
-  void endGame() {
-    _isGameActive = false;
-    
-    _clearActiveBlocks();
-    _addGameOverEffect();
-    
-    _performanceMonitor.stopTracking('game_session');
-    
-    debugPrint('🏁 Game ended');
+  /// Update player stats display
+  void updatePlayerStats(PlayerStats? playerStats) {
+    _currentPlayerStats = playerStats;
+    // Update UI elements that display player stats
   }
 
-  /// Reset all game state for a new game
-  void _resetGameState() {
-    // Clear the grid
-    for (int i = 0; i < gridSize; i++) {
-      for (int j = 0; j < gridSize; j++) {
-        final existingBlock = _placedBlocks[i][j];
-        if (existingBlock != null) {
-          existingBlock.removeFromParent();
-          _placedBlocks[i][j] = null;
+  /// Update grid from game state
+  void _updateGridFromState(List<List<int>> gridState) {
+    for (int row = 0; row < gridSize; row++) {
+      for (int col = 0; col < gridSize; col++) {
+        final cellValue = gridState[row][col];
+        
+        if (cellValue != 0) {
+          // Cell is occupied
+          if (_placedBlocks[row][col] == null) {
+            // Create new block component
+            final blockComponent = BlockComponent(
+              colorIndex: cellValue - 1,
+              position: Vector2(col.toDouble(), row.toDouble()),
+            );
+            _placedBlocks[row][col] = blockComponent;
+            _gridComponent.add(blockComponent);
+          }
+        } else {
+          // Cell is empty
+          if (_placedBlocks[row][col] != null) {
+            // Remove existing block
+            _placedBlocks[row][col]?.removeFromParent();
+            _placedBlocks[row][col] = null;
+          }
         }
       }
     }
-    
-    // Clear active blocks
-    _clearActiveBlocks();
-    
-    // Reset grid state
-    _gridComponent.resetGrid();
-    
-    // Clear effects
-    _clearAllEffects();
-    
-    debugPrint('🔄 Game state reset');
   }
 
-  /// Spawn the initial set of blocks for the game
-  void _spawnInitialBlocks() {
-    if (_currentSession == null) return;
-    
-    final blocksToSpawn = _currentSession!.nextBlocks;
-    
-    for (int i = 0; i < blocksToSpawn.length && i < 3; i++) {
-      _spawnBlock(blocksToSpawn[i], i);
+  /// Update active blocks
+  void _updateActiveBlocks(List<Block> blocks) {
+    // Clear existing active blocks
+    for (final block in _activeBlocks) {
+      block.removeFromParent();
     }
+    _activeBlocks.clear();
     
-    debugPrint('📦 Spawned ${blocksToSpawn.length} initial blocks');
+    // Add new active blocks
+    for (int i = 0; i < blocks.length; i++) {
+      final block = blocks[i];
+      final blockComponent = BlockComponent.fromBlock(
+        block: block,
+        position: Vector2(i * (cellSize + 10), -cellSize * 2),
+      );
+      
+      _activeBlocks.add(blockComponent);
+      add(blockComponent);
+    }
   }
 
-  /// Spawn a single block at the specified slot
-  void _spawnBlock(Block blockData, int slotIndex) {
-    final blockComponent = BlockComponent(
-      blockData: blockData,
-      cellSize: cellSize,
-      onDragStart: _handleBlockDragStart,
-      onDragEnd: _handleBlockDragEnd,
-    );
-    
-    // Position block in the appropriate slot
-    final slotPosition = _getBlockSlotPosition(slotIndex);
-    blockComponent.position = slotPosition;
-    
-    _activeBlocks.add(blockComponent);
-    add(blockComponent);
-    
-    // Add spawn animation
-    blockComponent.add(
-      ScaleEffect.to(
-        Vector2.all(1.0),
-        EffectController(
-          duration: 0.3,
-          curve: Curves.elasticOut,
-        ),
-      ),
-    );
+  /// Update visual elements based on game state
+  void _updateVisualElements(GameState gameState) {
+    // Update score display, level display, etc.
+    // This would typically update HUD components
   }
 
-  /// Get the position for a block slot
-  Vector2 _getBlockSlotPosition(int slotIndex) {
-    final screenWidth = gameRef.size.x;
-    final slotWidth = cellSize * 3; // Assume max 3x3 blocks
-    final spacing = 20.0;
-    final totalWidth = 3 * slotWidth + 2 * spacing;
-    final startX = (screenWidth - totalWidth) / 2;
+  // ========================================
+  // INTERACTION HANDLING
+  // ========================================
+
+  /// Handle cell tap
+  void _handleCellTapped(Vector2 cellPosition) {
+    final row = cellPosition.y.toInt();
+    final col = cellPosition.x.toInt();
     
-    final x = startX + slotIndex * (slotWidth + spacing);
-    final y = gameRef.size.y - 150; // Position at bottom
+    debugPrint('Cell tapped: ($row, $col)');
     
-    return Vector2(x, y);
+    // Handle cell interaction based on current game mode
+    // This might place a block, select a cell, etc.
   }
 
-  /// Handle when a block starts being dragged
-  void _handleBlockDragStart(BlockComponent block) {
-    if (!_isGameActive) return;
+  /// Handle block drop
+  void _handleBlockDropped(BlockComponent block, Vector2 cellPosition) {
+    final row = cellPosition.y.toInt();
+    final col = cellPosition.x.toInt();
     
-    // Highlight valid placement areas
-    _gridComponent.highlightValidPlacements(block.blockData);
+    debugPrint('Block dropped at: ($row, $col)');
     
-    // Add visual feedback
-    block.scale = Vector2.all(1.1);
-    block.add(ColorEffect(
-      AppColors.accent.withOpacity(0.8),
-      EffectController(duration: 0.1),
-    ));
-  }
-
-  /// Handle when a block finishes being dragged
-  void _handleBlockDragEnd(BlockComponent block, Vector2 worldPosition) {
-    if (!_isGameActive) return;
-    
-    // Clear grid highlights
-    _gridComponent.clearHighlights();
-    
-    // Reset block visual state
-    block.scale = Vector2.all(1.0);
-    
-    // Check if block can be placed at this position
-    final gridPosition = _worldToGridPosition(worldPosition);
-    
-    if (_canPlaceBlock(block.blockData, gridPosition)) {
-      _placeBlockOnGrid(block, gridPosition);
+    // Validate placement and update game state through cubit
+    if (_canPlaceBlock(block, row, col)) {
+      // Convert to domain entity and place through cubit
+      final blockEntity = block.toBlockEntity();
+      gameCubit.placeBlock(blockEntity, row, col);
+      
+      // Show placement effect
+      _showBlockPlacementEffect(Vector2(col.toDouble(), row.toDouble()));
     } else {
-      _returnBlockToSlot(block);
+      // Show invalid placement effect
+      _showInvalidPlacementEffect(Vector2(col.toDouble(), row.toDouble()));
     }
   }
 
-  /// Handle cell tapped on the grid
-  void _handleCellTapped(Vector2 gridPosition) {
-    if (!_isGameActive) return;
+  /// Check if block can be placed at position
+  bool _canPlaceBlock(BlockComponent block, int row, int col) {
+    // Implement placement validation logic
+    final blockShape = block.getShape();
     
-    // If there's a selected block, try to place it
-    final selectedBlock = _getSelectedBlock();
-    if (selectedBlock != null && _canPlaceBlock(selectedBlock.blockData, gridPosition)) {
-      _placeBlockOnGrid(selectedBlock, gridPosition);
-    }
-  }
-
-  /// Handle block dropped on the grid
-  void _handleBlockDropped(BlockComponent block, Vector2 gridPosition) {
-    if (!_isGameActive) return;
-    
-    if (_canPlaceBlock(block.blockData, gridPosition)) {
-      _placeBlockOnGrid(block, gridPosition);
-    }
-  }
-
-  /// Check if a block can be placed at the given grid position
-  bool _canPlaceBlock(Block blockData, Vector2 gridPosition) {
-    final startRow = gridPosition.y.toInt();
-    final startCol = gridPosition.x.toInt();
-    
-    // Check each cell of the block
-    for (int row = 0; row < blockData.shape.length; row++) {
-      for (int col = 0; col < blockData.shape[row].length; col++) {
-        if (blockData.shape[row][col] == 1) {
-          final gridRow = startRow + row;
-          final gridCol = startCol + col;
+    for (int r = 0; r < blockShape.length; r++) {
+      for (int c = 0; c < blockShape[r].length; c++) {
+        if (blockShape[r][c] == 1) {
+          final targetRow = row + r;
+          final targetCol = col + c;
           
           // Check bounds
-          if (gridRow < 0 || gridRow >= gridSize || 
-              gridCol < 0 || gridCol >= gridSize) {
+          if (targetRow < 0 || targetRow >= gridSize ||
+              targetCol < 0 || targetCol >= gridSize) {
             return false;
           }
           
           // Check if cell is already occupied
-          if (_placedBlocks[gridRow][gridCol] != null) {
+          if (_placedBlocks[targetRow][targetCol] != null) {
             return false;
           }
         }
@@ -288,336 +264,372 @@ class GameWorld extends PositionComponent with HasGameRef {
     return true;
   }
 
-  /// Place a block on the grid
-  void _placeBlockOnGrid(BlockComponent block, Vector2 gridPosition) {
-    _performanceMonitor.startTracking('place_block');
-    
-    final startRow = gridPosition.y.toInt();
-    final startCol = gridPosition.x.toInt();
-    
-    // Create new block components for each cell
-    final placedComponents = <BlockComponent>[];
-    
-    for (int row = 0; row < block.blockData.shape.length; row++) {
-      for (int col = 0; col < block.blockData.shape[row].length; col++) {
-        if (block.blockData.shape[row][col] == 1) {
-          final gridRow = startRow + row;
-          final gridCol = startCol + col;
-          
-          final cellBlock = BlockComponent(
-            blockData: Block(
-              id: '${block.blockData.id}_cell_${gridRow}_$gridCol',
-              shape: [[1]], // Single cell
-              color: block.blockData.color,
-              powerUpType: block.blockData.powerUpType,
-            ),
-            cellSize: cellSize,
-            isPlaced: true,
-          );
-          
-          final worldPos = _gridToWorldPosition(Vector2(gridCol.toDouble(), gridRow.toDouble()));
-          cellBlock.position = worldPos;
-          
-          _placedBlocks[gridRow][gridCol] = cellBlock;
-          placedComponents.add(cellBlock);
-          add(cellBlock);
-        }
-      }
-    }
-    
-    // Remove the dragged block
-    _activeBlocks.remove(block);
-    block.removeFromParent();
-    
-    // Add placement effect
-    _addBlockPlacementEffect(gridPosition, block.blockData);
-    
-    // Check for completed lines
-    _checkForCompletedLines();
-    
-    // Check if we need more blocks
-    _checkAndSpawnNewBlocks();
-    
-    // Check for game over
-    _checkGameOver();
-    
-    // Update game state
-    gameCubit.onBlockPlaced(block.blockData, gridPosition);
-    
-    _performanceMonitor.stopTracking('place_block');
-    
-    debugPrint('📍 Block placed at ($startCol, $startRow)');
-  }
+  // ========================================
+  // LINE CLEARING
+  // ========================================
 
-  /// Return a block to its original slot
-  void _returnBlockToSlot(BlockComponent block) {
-    final slotIndex = _activeBlocks.indexOf(block);
-    if (slotIndex >= 0) {
-      final slotPosition = _getBlockSlotPosition(slotIndex);
-      
-      block.add(MoveEffect.to(
-        slotPosition,
-        EffectController(duration: 0.3, curve: Curves.easeOut),
-      ));
-    }
-  }
-
-  /// Check for completed lines and clear them
+  /// Check for completed lines
   void _checkForCompletedLines() {
     final completedRows = <int>[];
     final completedCols = <int>[];
     
     // Check rows
     for (int row = 0; row < gridSize; row++) {
-      bool isComplete = true;
-      for (int col = 0; col < gridSize; col++) {
-        if (_placedBlocks[row][col] == null) {
-          isComplete = false;
-          break;
-        }
-      }
-      if (isComplete) {
+      if (_isRowComplete(row)) {
         completedRows.add(row);
       }
     }
     
     // Check columns
     for (int col = 0; col < gridSize; col++) {
-      bool isComplete = true;
-      for (int row = 0; row < gridSize; row++) {
-        if (_placedBlocks[row][col] == null) {
-          isComplete = false;
-          break;
-        }
-      }
-      if (isComplete) {
+      if (_isColumnComplete(col)) {
         completedCols.add(col);
       }
     }
     
+    // Clear completed lines
     if (completedRows.isNotEmpty || completedCols.isNotEmpty) {
-      _clearCompletedLines(completedRows, completedCols);
+      _clearLines(completedRows, completedCols);
     }
   }
 
-  /// Clear completed lines with animation
-  void _clearCompletedLines(List<int> rows, List<int> cols) {
-    _performanceMonitor.startTracking('clear_lines');
+  /// Check if row is complete
+  bool _isRowComplete(int row) {
+    for (int col = 0; col < gridSize; col++) {
+      if (_placedBlocks[row][col] == null) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Check if column is complete
+  bool _isColumnComplete(int col) {
+    for (int row = 0; row < gridSize; row++) {
+      if (_placedBlocks[row][col] == null) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Clear completed lines
+  void _clearLines(List<int> rows, List<int> cols) {
+    // Show line clear effects
+    for (final row in rows) {
+      _showLineClearEffect(row, isRow: true);
+    }
     
-    final cellsToRemove = <Vector2>[];
+    for (final col in cols) {
+      _showLineClearEffect(col, isRow: false);
+    }
     
-    // Collect cells to remove
+    // Remove blocks from cleared lines
     for (final row in rows) {
       for (int col = 0; col < gridSize; col++) {
-        cellsToRemove.add(Vector2(col.toDouble(), row.toDouble()));
+        _placedBlocks[row][col]?.removeFromParent();
+        _placedBlocks[row][col] = null;
       }
     }
     
     for (final col in cols) {
       for (int row = 0; row < gridSize; row++) {
-        cellsToRemove.add(Vector2(col.toDouble(), row.toDouble()));
+        _placedBlocks[row][col]?.removeFromParent();
+        _placedBlocks[row][col] = null;
       }
     }
+  }
+
+  // ========================================
+  // VISUAL EFFECTS
+  // ========================================
+
+  /// Show block placement effect
+  void _showBlockPlacementEffect(Vector2 position) {
+    if (!_particlesEnabled) return;
     
-    // Remove duplicates
-    final uniqueCells = cellsToRemove.toSet().toList();
+    final particle = ParticleComponent(
+      position: position * cellSize + Vector2(cellSize / 2, cellSize / 2),
+      color: AppColors.success,
+      type: ParticleType.burst,
+    );
     
-    // Add clear effects
-    for (final cell in uniqueCells) {
-      _addLineClearEffect(cell);
-    }
+    _particles.add(particle);
+    add(particle);
+  }
+
+  /// Show invalid placement effect
+  void _showInvalidPlacementEffect(Vector2 position) {
+    if (!_particlesEnabled) return;
     
-    // Remove blocks after animation
-    Future.delayed(const Duration(milliseconds: 300), () {
-      for (final cell in uniqueCells) {
-        final row = cell.y.toInt();
-        final col = cell.x.toInt();
-        
-        final block = _placedBlocks[row][col];
-        if (block != null) {
-          block.removeFromParent();
-          _placedBlocks[row][col] = null;
-        }
+    final particle = ParticleComponent(
+      position: position * cellSize + Vector2(cellSize / 2, cellSize / 2),
+      color: AppColors.error,
+      type: ParticleType.shake,
+    );
+    
+    _particles.add(particle);
+    add(particle);
+  }
+
+  /// Show line clear effect
+  void _showLineClearEffect(int lineIndex, {required bool isRow}) {
+    if (!_animationsEnabled) return;
+    
+    // Create line clear animation
+    final effect = ScaleEffect.to(
+      Vector2.zero(),
+      EffectController(duration: 0.3),
+    );
+    
+    // Apply to all blocks in the line
+    if (isRow) {
+      for (int col = 0; col < gridSize; col++) {
+        _placedBlocks[lineIndex][col]?.add(effect);
       }
-      
-      // Update game state
-      gameCubit.onLinesCleared(rows.length + cols.length, uniqueCells.length);
-      
-      _performanceMonitor.stopTracking('clear_lines');
+    } else {
+      for (int row = 0; row < gridSize; row++) {
+        _placedBlocks[row][lineIndex]?.add(effect);
+      }
+    }
+  }
+
+  /// Show coins earned effect
+  void showCoinsEarned(int coinsEarned) {
+    if (!_particlesEnabled) return;
+    
+    // Create floating text effect
+    final textComponent = TextComponent(
+      text: '+$coinsEarned',
+      textRenderer: TextPaint(
+        style: const TextStyle(
+          color: AppColors.warning,
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+    
+    textComponent.position = Vector2(size.x / 2, size.y / 4);
+    
+    // Add floating animation
+    final moveEffect = MoveEffect.to(
+      textComponent.position + Vector2(0, -50),
+      EffectController(duration: 2.0),
+    );
+    
+    final fadeEffect = OpacityEffect.to(
+      0.0,
+      EffectController(duration: 2.0),
+    );
+    
+    textComponent.add(moveEffect);
+    textComponent.add(fadeEffect);
+    
+    add(textComponent);
+    
+    // Remove after animation
+    Future.delayed(const Duration(seconds: 2), () {
+      textComponent.removeFromParent();
     });
+  }
+
+  /// Show achievement unlock effect
+  void showAchievementUnlock(Achievement achievement) {
+    if (!_animationsEnabled) return;
     
-    debugPrint('💥 Cleared ${rows.length} rows and ${cols.length} columns');
+    // Create achievement banner
+    final bannerComponent = RectangleComponent(
+      size: Vector2(size.x * 0.8, 60),
+      paint: Paint()..color = AppColors.primary.withOpacity(0.9),
+    );
+    
+    bannerComponent.position = Vector2(size.x * 0.1, -60);
+    
+    final textComponent = TextComponent(
+      text: 'Achievement Unlocked: ${achievement.title}',
+      textRenderer: TextPaint(
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+    
+    textComponent.position = Vector2(10, 20);
+    bannerComponent.add(textComponent);
+    
+    // Add slide-in animation
+    final slideIn = MoveEffect.to(
+      Vector2(size.x * 0.1, 50),
+      EffectController(duration: 0.5, curve: Curves.easeOut),
+    );
+    
+    bannerComponent.add(slideIn);
+    add(bannerComponent);
+    
+    // Remove after delay
+    Future.delayed(const Duration(seconds: 3), () {
+      final slideOut = MoveEffect.to(
+        Vector2(size.x * 0.1, -60),
+        EffectController(duration: 0.5, curve: Curves.easeIn),
+      );
+      
+      bannerComponent.add(slideOut);
+      
+      Future.delayed(const Duration(milliseconds: 500), () {
+        bannerComponent.removeFromParent();
+      });
+    });
   }
 
-  /// Check if new blocks need to be spawned
-  void _checkAndSpawnNewBlocks() {
-    if (_activeBlocks.isEmpty && _currentSession != null) {
-      // Request new blocks from the game cubit
-      gameCubit.requestNewBlocks();
-    }
-  }
-
-  /// Check for game over conditions
-  void _checkGameOver() {
-    if (!_hasValidMoves()) {
-      gameCubit.triggerGameOver();
-    }
-  }
-
-  /// Check if there are any valid moves available
-  bool _hasValidMoves() {
-    for (final block in _activeBlocks) {
-      if (_hasValidPlacement(block.blockData)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /// Check if a block has any valid placement on the grid
-  bool _hasValidPlacement(Block blockData) {
+  /// Show game over effect
+  void triggerGameOverEffect() {
+    if (!_animationsEnabled) return;
+    
+    // Add screen shake effect
+    final shakeEffect = MoveEffect.by(
+      Vector2(5, 0),
+      EffectController(
+        duration: 0.1,
+        alternate: true,
+        repeatCount: 10,
+      ),
+    );
+    
+    add(shakeEffect);
+    
+    // Dim all blocks
     for (int row = 0; row < gridSize; row++) {
       for (int col = 0; col < gridSize; col++) {
-        if (_canPlaceBlock(blockData, Vector2(col.toDouble(), row.toDouble()))) {
-          return true;
+        final block = _placedBlocks[row][col];
+        if (block != null) {
+          final dimEffect = OpacityEffect.to(
+            0.3,
+            EffectController(duration: 1.0),
+          );
+          block.add(dimEffect);
         }
       }
     }
-    return false;
   }
 
-  /// Convert world position to grid position
-  Vector2 _worldToGridPosition(Vector2 worldPosition) {
-    final localPosition = worldPosition - _gridComponent.position;
-    final gridX = (localPosition.x / (cellSize + GameConstants.gridSpacing)).floor();
-    final gridY = (localPosition.y / (cellSize + GameConstants.gridSpacing)).floor();
+  // ========================================
+  // PERFORMANCE SETTINGS
+  // ========================================
+
+  /// Set particles enabled/disabled
+  void setParticlesEnabled(bool enabled) {
+    _particlesEnabled = enabled;
     
-    return Vector2(
-      gridX.toDouble().clamp(0, gridSize - 1),
-      gridY.toDouble().clamp(0, gridSize - 1),
-    );
+    if (!enabled) {
+      // Remove all existing particles
+      for (final particle in _particles) {
+        particle.removeFromParent();
+      }
+      _particles.clear();
+    }
   }
 
-  /// Convert grid position to world position
-  Vector2 _gridToWorldPosition(Vector2 gridPosition) {
-    final x = _gridComponent.position.x + gridPosition.x * (cellSize + GameConstants.gridSpacing);
-    final y = _gridComponent.position.y + gridPosition.y * (cellSize + GameConstants.gridSpacing);
+  /// Set animations enabled/disabled
+  void setAnimationsEnabled(bool enabled) {
+    _animationsEnabled = enabled;
     
-    return Vector2(x, y);
+    if (!enabled) {
+      // Remove all active effects
+      for (final effect in _activeEffects) {
+        effect.removeFromParent();
+      }
+      _activeEffects.clear();
+    }
   }
 
-  /// Get the currently selected block (if any)
-  BlockComponent? _getSelectedBlock() {
+  /// Set shadows enabled/disabled
+  void setShadowsEnabled(bool enabled) {
+    _shadowsEnabled = enabled;
+    
+    // Update shadow rendering for all components
+    _gridComponent.setShadowsEnabled(enabled);
+    
     for (final block in _activeBlocks) {
-      if (block.isSelected) {
-        return block;
+      block.setShadowsEnabled(enabled);
+    }
+  }
+
+  /// Update size for responsive design
+  void updateSize(GameConfig config) {
+    // Update component sizes based on new configuration
+    size = Vector2(config.totalGridSize, config.totalGridSize);
+    
+    // Reposition grid
+    _positionGrid();
+    
+    // Update component scales
+    final scale = config.scale;
+    this.scale = Vector2.all(scale);
+  }
+
+  // ========================================
+  // UPDATE METHODS
+  // ========================================
+
+  /// Update particles
+  void _updateParticles(double dt) {
+    _particles.removeWhere((particle) {
+      if (particle.isFinished) {
+        particle.removeFromParent();
+        return true;
+      }
+      return false;
+    });
+  }
+
+  /// Update effects
+  void _updateEffects(double dt) {
+    _activeEffects.removeWhere((effect) {
+      if (effect.parent == null) {
+        return true;
+      }
+      return false;
+    });
+  }
+
+  /// Update animations
+  void _updateAnimations(double dt) {
+    // Update any custom animations here
+  }
+
+  // ========================================
+  // CLEANUP
+  // ========================================
+
+  /// Cleanup resources
+  void cleanup() {
+    // Remove all particles
+    for (final particle in _particles) {
+      particle.removeFromParent();
+    }
+    _particles.clear();
+    
+    // Remove all effects
+    for (final effect in _activeEffects) {
+      effect.removeFromParent();
+    }
+    _activeEffects.clear();
+    
+    // Clear placed blocks
+    for (int row = 0; row < gridSize; row++) {
+      for (int col = 0; col < gridSize; col++) {
+        _placedBlocks[row][col]?.removeFromParent();
+        _placedBlocks[row][col] = null;
       }
     }
-    return null;
-  }
-
-  /// Clear all active blocks
-  void _clearActiveBlocks() {
+    
+    // Remove active blocks
     for (final block in _activeBlocks) {
       block.removeFromParent();
     }
     _activeBlocks.clear();
   }
-
-  /// Add block placement effect
-  void _addBlockPlacementEffect(Vector2 gridPosition, Block blockData) {
-    final worldPos = _gridToWorldPosition(gridPosition);
-    final particle = ParticleComponent.blockPlacement(
-      position: worldPos,
-      color: blockData.color,
-    );
-    
-    _particles.add(particle);
-    add(particle);
-    
-    // Remove particle after animation
-    Future.delayed(const Duration(seconds: 2), () {
-      particle.removeFromParent();
-      _particles.remove(particle);
-    });
-  }
-
-  /// Add line clear effect
-  void _addLineClearEffect(Vector2 gridPosition) {
-    final worldPos = _gridToWorldPosition(gridPosition);
-    final particle = ParticleComponent.lineClear(
-      position: worldPos,
-      cellSize: cellSize,
-    );
-    
-    _particles.add(particle);
-    add(particle);
-    
-    // Remove particle after animation
-    Future.delayed(const Duration(seconds: 1), () {
-      particle.removeFromParent();
-      _particles.remove(particle);
-    });
-  }
-
-  /// Add game over effect
-  void _addGameOverEffect() {
-    final centerPosition = Vector2(gameRef.size.x / 2, gameRef.size.y / 2);
-    final particle = ParticleComponent.gameOver(
-      position: centerPosition,
-    );
-    
-    _particles.add(particle);
-    add(particle);
-  }
-
-  /// Clear all effects
-  void _clearAllEffects() {
-    for (final particle in _particles) {
-      particle.removeFromParent();
-    }
-    _particles.clear();
-    _effects.clear();
-  }
-
-  /// Update player stats display
-  void updatePlayerStats(PlayerStats stats) {
-    _currentPlayerStats = stats;
-    // Update any UI components that show player stats
-  }
-
-  /// Update layout for responsive design
-  void updateLayout(dynamic config) {
-    // Update positions and sizes based on new configuration
-    _setupGrid();
-    
-    // Reposition active blocks
-    for (int i = 0; i < _activeBlocks.length; i++) {
-      final newPosition = _getBlockSlotPosition(i);
-      _activeBlocks[i].position = newPosition;
-    }
-  }
-
-  /// Place a block programmatically (for power-ups, etc.)
-  void placeBlock(Block block, Vector2 position) {
-    if (!_isGameActive) return;
-    
-    final gridPosition = _worldToGridPosition(position);
-    if (_canPlaceBlock(block, gridPosition)) {
-      // Create a temporary block component
-      final blockComponent = BlockComponent(
-        blockData: block,
-        cellSize: cellSize,
-      );
-      
-      _placeBlockOnGrid(blockComponent, gridPosition);
-    }
-  }
-
-  // Getters for external access
-  List<BlockComponent> get activeBlocks => List.unmodifiable(_activeBlocks);
-  List<List<BlockComponent?>> get placedBlocks => _placedBlocks;
-  GridComponent get gridComponent => _gridComponent;
-  bool get isGameActive => _isGameActive;
-  GameSession? get currentSession => _currentSession;
 }

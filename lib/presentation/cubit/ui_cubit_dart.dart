@@ -5,7 +5,7 @@ import 'package:puzzle_box/core/services/audio_service.dart';
 import 'package:puzzle_box/core/services/storage_service.dart';
 import 'package:puzzle_box/core/constants/app_constants.dart';
 import 'package:puzzle_box/core/state/ui_state.dart';
-
+import 'package:puzzle_box/domain/entities/achievement_entity.dart';
 
 /// UICubit manages global UI state, navigation, settings, and user preferences.
 /// Handles app-wide UI behavior, theme, audio settings, and navigation flow.
@@ -23,6 +23,13 @@ class UICubit extends Cubit<UIState> {
     this._storageService,
   ) : super(const UIState()) {
     _initializeUICubit();
+  }
+
+  @override
+  Future<void> close() async {
+    _notificationTimer?.cancel();
+    _autoHideTimer?.cancel();
+    await super.close();
   }
 
   /// Initialize the UI cubit
@@ -128,38 +135,19 @@ class UICubit extends Cubit<UIState> {
     ));
   }
 
-  /// Show achievement notification
-  void showAchievementNotification({Achievement? achievement}) {
-    emit(state.copyWith(
-      showAchievementNotification: true,
-      currentAchievement: achievement,
-    ));
-    
-    // Auto-hide after delay
-    _autoHideTimer?.cancel();
-    _autoHideTimer = Timer(const Duration(seconds: 4), () {
-      hideAchievementNotification();
-    });
-  }
+  // ========================================
+  // LOADING STATE MANAGEMENT
+  // ========================================
 
-  /// Hide achievement notification
-  void hideAchievementNotification() {
-    emit(state.copyWith(
-      showAchievementNotification: false,
-      currentAchievement: null,
-    ));
-    _autoHideTimer?.cancel();
-  }
-
-  /// Show loading overlay
+  /// Show loading indicator
   void showLoading({String? message}) {
     emit(state.copyWith(
       isLoading: true,
-      loadingMessage: message,
+      loadingMessage: message ?? 'Loading...',
     ));
   }
 
-  /// Hide loading overlay
+  /// Hide loading indicator
   void hideLoading() {
     emit(state.copyWith(
       isLoading: false,
@@ -168,253 +156,245 @@ class UICubit extends Cubit<UIState> {
   }
 
   // ========================================
-  // NOTIFICATION MANAGEMENT
+  // ERROR HANDLING
   // ========================================
 
   /// Show error message
-  void showError(String message, {Duration? duration}) {
+  void showError(String message) {
     emit(state.copyWith(
       hasError: true,
       errorMessage: message,
-      errorType: ErrorType.general,
     ));
     
-    // Auto-clear error after duration
-    final clearDuration = duration ?? const Duration(seconds: 4);
-    _notificationTimer?.cancel();
-    _notificationTimer = Timer(clearDuration, () {
-      clearError();
-    });
-    
-    // Play error sound
-    if (state.soundEnabled) {
-      _audioService.playSfx('ui_error');
-    }
+    // Auto-hide error after 5 seconds
+    _autoHideTimer?.cancel();
+    _autoHideTimer = Timer(const Duration(seconds: 5), hideError);
   }
 
-  /// Show success message
-  void showSuccess(String message, {Duration? duration}) {
-    emit(state.copyWith(
-      hasSuccess: true,
-      successMessage: message,
-    ));
-    
-    // Auto-clear success after duration
-    final clearDuration = duration ?? const Duration(seconds: 3);
-    _notificationTimer?.cancel();
-    _notificationTimer = Timer(clearDuration, () {
-      clearSuccess();
-    });
-    
-    // Play success sound
-    if (state.soundEnabled) {
-      _audioService.playSfx('ui_success');
-    }
-  }
-
-  /// Show info message
-  void showInfo(String message, {Duration? duration}) {
-    emit(state.copyWith(
-      hasInfo: true,
-      infoMessage: message,
-    ));
-    
-    // Auto-clear info after duration
-    final clearDuration = duration ?? const Duration(seconds: 3);
-    _notificationTimer?.cancel();
-    _notificationTimer = Timer(clearDuration, () {
-      clearInfo();
-    });
-  }
-
-  /// Clear error message
-  void clearError() {
+  /// Hide error message
+  void hideError() {
+    _autoHideTimer?.cancel();
     emit(state.copyWith(
       hasError: false,
       errorMessage: null,
-      errorType: null,
-    ));
-  }
-
-  /// Clear success message
-  void clearSuccess() {
-    emit(state.copyWith(
-      hasSuccess: false,
-      successMessage: null,
-    ));
-  }
-
-  /// Clear info message
-  void clearInfo() {
-    emit(state.copyWith(
-      hasInfo: false,
-      infoMessage: null,
     ));
   }
 
   // ========================================
-  // SETTINGS MANAGEMENT
+  // NOTIFICATION MANAGEMENT
+  // ========================================
+
+  /// Show achievement notification
+  void showAchievementNotification() {
+    emit(state.copyWith(
+      showAchievementNotification: true,
+    ));
+    
+    // Auto-hide after 3 seconds
+    _notificationTimer?.cancel();
+    _notificationTimer = Timer(const Duration(seconds: 3), hideAchievementNotification);
+  }
+
+  /// Hide achievement notification
+  void hideAchievementNotification() {
+    _notificationTimer?.cancel();
+    emit(state.copyWith(
+      showAchievementNotification: false,
+    ));
+  }
+
+  // ========================================
+  // AUDIO SETTINGS
   // ========================================
 
   /// Toggle music on/off
   Future<void> toggleMusic() async {
-    final newValue = !state.musicEnabled;
-    
-    emit(state.copyWith(musicEnabled: newValue));
-    
-    // Update audio service
-    if (newValue) {
-      await _audioService.resumeMusic();
-    } else {
-      await _audioService.pauseMusic();
+    try {
+      final newValue = !state.musicEnabled;
+      emit(state.copyWith(musicEnabled: newValue));
+      
+      if (newValue) {
+        await _audioService.resumeMusic();
+      } else {
+        await _audioService.pauseMusic();
+      }
+      
+      await _saveUserPreferences();
+      developer.log('Music toggled: $newValue', name: 'UICubit');
+    } catch (e) {
+      developer.log('Failed to toggle music: $e', name: 'UICubit');
+      showError('Failed to toggle music');
     }
-    
-    // Save preference
-    await _saveUserPreferences();
-    
-    developer.log('Music toggled: $newValue', name: 'UICubit');
   }
 
   /// Toggle sound effects on/off
   Future<void> toggleSound() async {
-    final newValue = !state.soundEnabled;
-    
-    emit(state.copyWith(soundEnabled: newValue));
-    
-    // Test sound if enabling
-    if (newValue) {
-      _audioService.playSfx('ui_click');
+    try {
+      final newValue = !state.soundEnabled;
+      emit(state.copyWith(soundEnabled: newValue));
+      
+      // Play confirmation sound if enabling
+      if (newValue) {
+        await _audioService.playSfx('ui_toggle');
+      }
+      
+      await _saveUserPreferences();
+      developer.log('Sound toggled: $newValue', name: 'UICubit');
+    } catch (e) {
+      developer.log('Failed to toggle sound: $e', name: 'UICubit');
+      showError('Failed to toggle sound');
     }
-    
-    // Save preference
-    await _saveUserPreferences();
-    
-    developer.log('Sound toggled: $newValue', name: 'UICubit');
   }
 
   /// Set music volume
   Future<void> setMusicVolume(double volume) async {
-    final clampedVolume = volume.clamp(0.0, 1.0);
-    
-    emit(state.copyWith(musicVolume: clampedVolume));
-    
-    // Update audio service
-    await _audioService.setMusicVolume(clampedVolume);
-    
-    // Save preference
-    await _saveUserPreferences();
+    try {
+      final clampedVolume = volume.clamp(0.0, 1.0);
+      emit(state.copyWith(musicVolume: clampedVolume));
+      
+      await _audioService.setMusicVolume(clampedVolume);
+      await _saveUserPreferences();
+      
+      developer.log('Music volume set: $clampedVolume', name: 'UICubit');
+    } catch (e) {
+      developer.log('Failed to set music volume: $e', name: 'UICubit');
+      showError('Failed to adjust music volume');
+    }
   }
 
   /// Set sound effects volume
   Future<void> setSoundVolume(double volume) async {
-    final clampedVolume = volume.clamp(0.0, 1.0);
-    
-    emit(state.copyWith(soundVolume: clampedVolume));
-    
-    // Update audio service
-    await _audioService.setSfxVolume(clampedVolume);
-    
-    // Save preference
-    await _saveUserPreferences();
+    try {
+      final clampedVolume = volume.clamp(0.0, 1.0);
+      emit(state.copyWith(soundVolume: clampedVolume));
+      
+      await _audioService.setSfxVolume(clampedVolume);
+      await _saveUserPreferences();
+      
+      developer.log('Sound volume set: $clampedVolume', name: 'UICubit');
+    } catch (e) {
+      developer.log('Failed to set sound volume: $e', name: 'UICubit');
+      showError('Failed to adjust sound volume');
+    }
   }
+
+  // ========================================
+  // OTHER SETTINGS
+  // ========================================
 
   /// Toggle haptic feedback
   Future<void> toggleHaptics() async {
-    final newValue = !state.hapticsEnabled;
-    
-    emit(state.copyWith(hapticsEnabled: newValue));
-    
-    // Test haptic if enabling
-    if (newValue) {
-      // HapticFeedback.lightImpact(); // Would need import
-    }
-    
-    // Save preference
-    await _saveUserPreferences();
-    
-    developer.log('Haptics toggled: $newValue', name: 'UICubit');
-  }
-
-  /// Set app theme
-  Future<void> setTheme(AppTheme theme) async {
-    emit(state.copyWith(currentTheme: theme));
-    
-    // Save preference
-    await _saveUserPreferences();
-    
-    developer.log('Theme changed to: ${theme.name}', name: 'UICubit');
-  }
-
-  /// Set app language
-  Future<void> setLanguage(AppLanguage language) async {
-    emit(state.copyWith(currentLanguage: language));
-    
-    // Save preference
-    await _saveUserPreferences();
-    
-    developer.log('Language changed to: ${language.name}', name: 'UICubit');
-  }
-
-  // ========================================
-  // TUTORIAL MANAGEMENT
-  // ========================================
-
-  /// Start tutorial
-  void startTutorial() {
-    emit(state.copyWith(
-      showTutorial: true,
-      tutorialStep: 0,
-    ));
-  }
-
-  /// Next tutorial step
-  void nextTutorialStep() {
-    final currentStep = state.tutorialStep;
-    emit(state.copyWith(tutorialStep: currentStep + 1));
-    
-    // Play UI sound
-    if (state.soundEnabled) {
-      _audioService.playSfx('ui_click');
+    try {
+      final newValue = !state.hapticsEnabled;
+      emit(state.copyWith(hapticsEnabled: newValue));
+      
+      // Provide haptic feedback if enabling
+      if (newValue) {
+        await _audioService.vibrate();
+      }
+      
+      await _saveUserPreferences();
+      developer.log('Haptics toggled: $newValue', name: 'UICubit');
+    } catch (e) {
+      developer.log('Failed to toggle haptics: $e', name: 'UICubit');
+      showError('Failed to toggle haptics');
     }
   }
 
-  /// Previous tutorial step
-  void previousTutorialStep() {
-    final currentStep = state.tutorialStep;
-    if (currentStep > 0) {
-      emit(state.copyWith(tutorialStep: currentStep - 1));
+  /// Toggle auto-save
+  Future<void> toggleAutoSave() async {
+    try {
+      final newValue = !state.autoSaveEnabled;
+      emit(state.copyWith(autoSaveEnabled: newValue));
+      
+      await _saveUserPreferences();
+      developer.log('Auto-save toggled: $newValue', name: 'UICubit');
+    } catch (e) {
+      developer.log('Failed to toggle auto-save: $e', name: 'UICubit');
+      showError('Failed to toggle auto-save');
     }
   }
 
-  /// Complete tutorial
-  Future<void> completeTutorial() async {
-    emit(state.copyWith(
-      showTutorial: false,
-      tutorialCompleted: true,
-      tutorialStep: 0,
-    ));
-    
-    // Save completion status
-    await _saveUserPreferences();
-    
-    // Show success
-    showSuccess('Tutorial completed! You\'re ready to play!');
-    
-    developer.log('Tutorial completed', name: 'UICubit');
+  /// Toggle animations
+  Future<void> toggleAnimations() async {
+    try {
+      final newValue = !state.animationsEnabled;
+      emit(state.copyWith(animationsEnabled: newValue));
+      
+      await _saveUserPreferences();
+      developer.log('Animations toggled: $newValue', name: 'UICubit');
+    } catch (e) {
+      developer.log('Failed to toggle animations: $e', name: 'UICubit');
+      showError('Failed to toggle animations');
+    }
   }
 
-  /// Skip tutorial
-  Future<void> skipTutorial() async {
-    emit(state.copyWith(
-      showTutorial: false,
-      tutorialSkipped: true,
-      tutorialStep: 0,
-    ));
-    
-    // Save skip status
-    await _saveUserPreferences();
-    
-    developer.log('Tutorial skipped', name: 'UICubit');
+  /// Toggle particles
+  Future<void> toggleParticles() async {
+    try {
+      final newValue = !state.particlesEnabled;
+      emit(state.copyWith(particlesEnabled: newValue));
+      
+      await _saveUserPreferences();
+      developer.log('Particles toggled: $newValue', name: 'UICubit');
+    } catch (e) {
+      developer.log('Failed to toggle particles: $e', name: 'UICubit');
+      showError('Failed to toggle particles');
+    }
+  }
+
+  /// Set theme mode
+  Future<void> setThemeMode(AppTheme theme) async {
+    try {
+      emit(state.copyWith(currentTheme: theme));
+      await _saveUserPreferences();
+      developer.log('Theme set: ${theme.name}', name: 'UICubit');
+    } catch (e) {
+      developer.log('Failed to set theme: $e', name: 'UICubit');
+      showError('Failed to change theme');
+    }
+  }
+
+  /// Toggle theme mode
+  Future<void> toggleThemeMode() async {
+    try {
+      final newTheme = state.currentTheme == AppTheme.light 
+          ? AppTheme.dark 
+          : AppTheme.light;
+      await setThemeMode(newTheme);
+      developer.log('Theme toggled', name: 'UICubit');
+    } catch (e) {
+      developer.log('Failed to toggle theme: $e', name: 'UICubit');
+      showError('Failed to toggle theme');
+    }
+  }
+
+  /// Show achievement unlock
+  void showAchievementUnlock(Achievement achievement) {
+    try {
+      showLoading();
+      
+      emit(state.copyWith(
+        pageData: {
+          'achievement_unlock': {
+            'achievement_id': achievement.id,
+            'title': achievement.title,
+            'description': achievement.description,
+            'reward_coins': achievement.coinReward,
+          }
+        }
+      ));
+      
+      // Auto-hide after delay
+      Future.delayed(const Duration(seconds: 3), () {
+        hideLoading();
+        emit(state.copyWith(pageData: {}));
+      });
+      
+      developer.log('Achievement unlock shown: ${achievement.title}', name: 'UICubit');
+    } catch (e) {
+      developer.log('Failed to show achievement unlock: $e', name: 'UICubit');
+    }
   }
 
   // ========================================
@@ -488,21 +468,13 @@ class UICubit extends Cubit<UIState> {
             (lang) => lang.name == (preferences['language'] as String?),
             orElse: () => AppLanguage.english,
           ),
-          tutorialCompleted: preferences['tutorialCompleted'] as bool? ?? false,
-          performanceMode: PerformanceMode.values.firstWhere(
-            (mode) => mode.name == (preferences['performanceMode'] as String?),
-            orElse: () => PerformanceMode.balanced,
-          ),
+          animationsEnabled: preferences['animationsEnabled'] as bool? ?? true,
+          particlesEnabled: preferences['particlesEnabled'] as bool? ?? true,
+          autoSaveEnabled: preferences['autoSaveEnabled'] as bool? ?? true,
         ));
-        
-        // Apply loaded settings
-        await _audioService.setMusicVolume(state.musicVolume);
-        await _audioService.setSfxVolume(state.soundVolume);
-        await _applyPerformanceSettings(state.performanceMode);
       }
       
       developer.log('User preferences loaded', name: 'UICubit');
-      
     } catch (e) {
       developer.log('Failed to load user preferences: $e', name: 'UICubit');
     }
@@ -519,101 +491,15 @@ class UICubit extends Cubit<UIState> {
         'soundVolume': state.soundVolume,
         'theme': state.currentTheme.name,
         'language': state.currentLanguage.name,
-        'tutorialCompleted': state.tutorialCompleted,
-        'performanceMode': state.performanceMode.name,
-        'lastSaved': DateTime.now().toIso8601String(),
+        'animationsEnabled': state.animationsEnabled,
+        'particlesEnabled': state.particlesEnabled,
+        'autoSaveEnabled': state.autoSaveEnabled,
       };
       
       await _storageService.saveUserPreferences(preferences);
-      
       developer.log('User preferences saved', name: 'UICubit');
-      
     } catch (e) {
       developer.log('Failed to save user preferences: $e', name: 'UICubit');
     }
-  }
-
-  // ========================================
-  // UTILITY METHODS
-  // ========================================
-
-  /// Reset all settings to defaults
-  Future<void> resetSettings() async {
-    emit(const UIState());
-    
-    // Reset audio service
-    await _audioService.setMusicVolume(AppConstants.defaultMusicVolume);
-    await _audioService.setSfxVolume(AppConstants.defaultSfxVolume);
-    
-    // Save reset preferences
-    await _saveUserPreferences();
-    
-    showSuccess('Settings reset to defaults');
-    
-    developer.log('Settings reset to defaults', name: 'UICubit');
-  }
-
-  /// Export UI settings
-  Map<String, dynamic> exportSettings() {
-    return {
-      'musicEnabled': state.musicEnabled,
-      'soundEnabled': state.soundEnabled,
-      'hapticsEnabled': state.hapticsEnabled,
-      'musicVolume': state.musicVolume,
-      'soundVolume': state.soundVolume,
-      'theme': state.currentTheme.name,
-      'language': state.currentLanguage.name,
-      'performanceMode': state.performanceMode.name,
-      'exportDate': DateTime.now().toIso8601String(),
-    };
-  }
-
-  /// Import UI settings
-  Future<void> importSettings(Map<String, dynamic> settings) async {
-    try {
-      emit(state.copyWith(
-        musicEnabled: settings['musicEnabled'] as bool? ?? state.musicEnabled,
-        soundEnabled: settings['soundEnabled'] as bool? ?? state.soundEnabled,
-        hapticsEnabled: settings['hapticsEnabled'] as bool? ?? state.hapticsEnabled,
-        musicVolume: (settings['musicVolume'] as double?) ?? state.musicVolume,
-        soundVolume: (settings['soundVolume'] as double?) ?? state.soundVolume,
-        currentTheme: AppTheme.values.firstWhere(
-          (theme) => theme.name == (settings['theme'] as String?),
-          orElse: () => state.currentTheme,
-        ),
-        currentLanguage: AppLanguage.values.firstWhere(
-          (lang) => lang.name == (settings['language'] as String?),
-          orElse: () => state.currentLanguage,
-        ),
-        performanceMode: PerformanceMode.values.firstWhere(
-          (mode) => mode.name == (settings['performanceMode'] as String?),
-          orElse: () => state.performanceMode,
-        ),
-      ));
-      
-      // Apply imported settings
-      await _audioService.setMusicVolume(state.musicVolume);
-      await _audioService.setSfxVolume(state.soundVolume);
-      await _applyPerformanceSettings(state.performanceMode);
-      
-      // Save imported settings
-      await _saveUserPreferences();
-      
-      showSuccess('Settings imported successfully');
-      
-    } catch (e) {
-      showError('Failed to import settings: ${e.toString()}');
-    }
-  }
-
-  // ========================================
-  // CLEANUP
-  // ========================================
-
-  @override
-  Future<void> close() {
-    _notificationTimer?.cancel();
-    _autoHideTimer?.cancel();
-    return super.close();
   }
 }

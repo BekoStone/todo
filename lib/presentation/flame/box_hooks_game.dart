@@ -1,6 +1,7 @@
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
+import 'package:puzzle_box/core/state/player_state.dart';
 import 'package:puzzle_box/core/state/ui_state.dart';
 import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
@@ -14,13 +15,30 @@ import 'systems/input_system.dart';
 import 'systems/scoring_system.dart';
 import 'systems/power_up_system.dart';
 
+/// Configuration class for game responsiveness
+class GameConfig {
+  final int gridSize;
+  final double cellSize;
+  final double gridSpacing;
+  final double totalGridSize;
+  final double scale;
+
+  const GameConfig({
+    required this.gridSize,
+    required this.cellSize,
+    required this.gridSpacing,
+    required this.totalGridSize,
+    required this.scale,
+  });
+}
+
 /// Main Flame game class following Clean Architecture principles.
 /// Acts as the game engine coordinator and integrates with Flutter's state management.
 class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
   // Dependencies injected via service locator
   late final GameCubit _gameCubit;
   late final PlayerCubit _playerCubit;
-  late final UICubit _uiCubit; // ✅ FIXED: Consistent naming
+  late final UICubit _uiCubit;
   late final AudioService _audioService;
   
   // Core game components
@@ -40,12 +58,50 @@ class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
   Future<void> onLoad() async {
     super.onLoad();
     
-    await _initializeDependencies();
-    await _initializeGameComponents();
-    await _setupEventListeners();
+    try {
+      await _initializeDependencies();
+      await _initializeGameComponents();
+      await _setupEventListeners();
+      
+      _isInitialized = true;
+      debugPrint('✅ BoxHooksGame initialized successfully');
+    } catch (e) {
+      debugPrint('❌ Failed to initialize BoxHooksGame: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  void onGameResize(Vector2 canvasSize) {
+    super.onGameResize(canvasSize);
     
-    _isInitialized = true;
-    debugPrint('✅ BoxHooksGame initialized successfully');
+    // Recalculate responsive configuration when screen size changes
+    final newConfig = ResponsiveUtils.getGameConfig(canvasSize.toSize());
+    if (newConfig != _currentConfig) {
+      _currentConfig = newConfig;
+      _updateComponentsForNewSize(newConfig);
+    }
+  }
+
+  @override
+  void update(double dt) {
+    super.update(dt);
+    
+    // Performance monitoring
+    _monitorPerformance(dt);
+    
+    // Only update game components when not paused
+    if (!_isPaused && _isInitialized) {
+      _updateGameLogic(dt);
+    }
+  }
+
+  @override
+  void render(Canvas canvas) {
+    super.render(canvas);
+    
+    // Additional rendering optimizations could go here
+    _optimizeRenderingPerformance(canvas);
   }
 
   /// Initialize all dependencies from the service locator
@@ -53,7 +109,7 @@ class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
     try {
       _gameCubit = getIt<GameCubit>();
       _playerCubit = getIt<PlayerCubit>();
-      _uiCubit = getIt<UICubit>(); // ✅ FIXED: Correct class name
+      _uiCubit = getIt<UICubit>();
       _audioService = getIt<AudioService>();
       
       debugPrint('🔧 Dependencies initialized');
@@ -66,8 +122,8 @@ class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
   /// Initialize and configure all game components
   Future<void> _initializeGameComponents() async {
     try {
-      // ✅ FIXED: Use ResponsiveUtils as static methods, not injected service
-      final screenSize = size;
+      // Calculate responsive configuration
+      final screenSize = size.toSize();
       final config = ResponsiveUtils.getGameConfig(screenSize);
       _currentConfig = config;
       
@@ -97,11 +153,11 @@ class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
         playerCubit: _playerCubit,
       );
       
-      // Add components in order
-      add(_gameWorld);
-      add(_inputSystem);
-      add(_scoringSystem);
-      add(_powerUpSystem);
+      // Add components in order of dependencies
+      await add(_gameWorld);
+      await add(_inputSystem);
+      await add(_scoringSystem);
+      await add(_powerUpSystem);
       
       debugPrint('🎮 Game components initialized');
     } catch (e) {
@@ -132,7 +188,6 @@ class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
   void _handleGameStateChange(GameState gameState) {
     if (!_isInitialized) return;
 
-    // ✅ FIXED: Proper state handling based on your GameState structure
     switch (gameState.status) {
       case GameStateStatus.initial:
         debugPrint('🎮 Game state: Initial');
@@ -164,22 +219,22 @@ class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
     if (!_isInitialized) return;
 
     switch (playerState.status) {
-      case PlayerStateStatus.initial:
-        debugPrint('👤 Player state: Initial');
-        break;
-      case PlayerStateStatus.loading:
-        debugPrint('👤 Player state: Loading');
-        break;
       case PlayerStateStatus.loaded:
-        debugPrint('👤 Player state: Loaded');
-        _updatePlayerDisplay(playerState);
+        _handlePlayerLoaded(playerState);
         break;
       case PlayerStateStatus.updating:
-        debugPrint('👤 Player state: Updating');
+        _handlePlayerUpdating(playerState);
         break;
       case PlayerStateStatus.error:
         debugPrint('❌ Player state error: ${playerState.errorMessage}');
         break;
+      default:
+        break;
+    }
+
+    // Handle achievement unlocks
+    if (playerState.hasUnseenAchievements && playerState.recentUnlocks.isNotEmpty) {
+      _handleAchievementUnlocks(playerState.recentUnlocks);
     }
   }
 
@@ -187,183 +242,244 @@ class BoxHooksGame extends FlameGame with HasCollisionDetection, HasGameRef {
   void _handleUIStateChange(UIState uiState) {
     if (!_isInitialized) return;
 
-    // Handle UI-specific state changes
-    if (uiState.isLoading) {
-      // Show loading overlay if needed
+    // Handle audio settings changes
+    if (uiState.musicEnabled) {
+      _audioService.resumeMusic();
+    } else {
+      _audioService.pauseMusic();
     }
 
-    if (uiState.hasError) {
-      debugPrint('🎨 UI Error: ${uiState.errorMessage}');
-    }
+    // Handle performance mode changes
+    _applyPerformanceSettings(uiState.performanceMode);
+    
+    // Handle visual settings
+    _applyVisualSettings(uiState);
   }
 
-  /// Handle playing state
+  // ========================================
+  // GAME STATE HANDLERS
+  // ========================================
+
   void _handleGamePlaying(GameState gameState) {
-    if (_isPaused) {
-      _resumeGame();
-    }
+    _isPaused = false;
     
-    // Update overlays
-    overlays.clear();
+    // Update game world with current state
+    _gameWorld.updateFromGameState(gameState);
     
-    // Play background music if enabled
-    if (_uiCubit.state.settings.musicEnabled) {
-      _audioService.playMusic('game_theme');
-    }
+    // Resume background music
+    _audioService.playMusic('game_background');
   }
 
-  /// Handle paused state
   void _handleGamePaused(GameState gameState) {
-    if (!_isPaused) {
-      _pauseGame();
-    }
+    _isPaused = true;
     
-    // Show pause overlay
-    overlays.clear();
-    overlays.add('PauseOverlay');
+    // Pause background music
+    _audioService.pauseMusic();
+    
+    // Save game state
+    _gameCubit.saveGame();
   }
 
-  /// Handle game over state
   void _handleGameOver(GameState gameState) {
-    _pauseGame();
-    
-    // Show game over overlay
-    overlays.clear();
-    overlays.add('GameOverOverlay');
+    _isPaused = true;
     
     // Play game over sound
     _audioService.playSfx('game_over');
+    
+    // Stop background music
+    _audioService.stopMusic();
+    
+    // Trigger game over effects
+    _gameWorld.triggerGameOverEffect();
   }
 
-  /// Handle game error
   void _handleGameError(String errorMessage) {
-    debugPrint('🚨 Game Error: $errorMessage');
-    
-    // Show error overlay or return to menu
-    overlays.clear();
-    overlays.add('ErrorOverlay');
-  }
-
-  /// Update player display elements
-  void _updatePlayerDisplay(PlayerState playerState) {
-    // Update any player-specific UI elements in the game
-    if (playerState.hasUnseenAchievements) {
-      // Show achievement notification
-      overlays.add('AchievementNotification');
-    }
-  }
-
-  /// Public API for starting a new game
-  void startNewGame() {
-    if (!_isInitialized) {
-      debugPrint('⚠️ Game not initialized, cannot start');
-      return;
-    }
-    
-    _gameCubit.startNewGame();
-  }
-
-  /// Public API for pausing the game
-  void pauseGame() {
-    if (!_isInitialized || _isPaused) return;
-    
-    _gameCubit.pauseGame();
-  }
-
-  /// Public API for resuming the game
-  void resumeGame() {
-    if (!_isInitialized || !_isPaused) return;
-    
-    _gameCubit.resumeGame();
-  }
-
-  /// Public API for ending the game
-  void endGame() {
-    if (!_isInitialized) return;
-    
-    _gameCubit.endGame();
-  }
-
-  /// Public API for placing a block
-  void placeBlock(Block block, Vector2 position) {
-    if (!_isInitialized || _isPaused) return;
-    
-    _gameWorld.placeBlock(block, position);
-  }
-
-  /// Public API for using a power-up
-  void usePowerUp(String powerUpId) {
-    if (!_isInitialized || _isPaused) return;
-    
-    _powerUpSystem.usePowerUp(powerUpId);
-  }
-
-  /// Internal pause handling
-  void _pauseGame() {
     _isPaused = true;
-    pauseEngine();
-    _inputSystem.disable();
     
-    // Pause audio
-    _audioService.pauseMusic();
-  }
-
-  /// Internal resume handling
-  void _resumeGame() {
-    _isPaused = false;
-    resumeEngine();
-    _inputSystem.enable();
+    // Show error overlay
+    _uiCubit.showError('Game Error: $errorMessage');
     
-    // Resume audio if enabled
-    if (_uiCubit.state.settings.musicEnabled) {
-      _audioService.resumeMusic();
+    // Attempt to save current state
+    try {
+      _gameCubit.saveGame();
+    } catch (e) {
+      debugPrint('Failed to save game after error: $e');
     }
   }
 
-  /// Handle game resize for responsive layout
-  @override
-  void onGameResize(Vector2 size) {
-    super.onGameResize(size);
-    
-    if (_isInitialized) {
-      // ✅ FIXED: Use static method instead of injected service
-      final config = ResponsiveUtils.getGameConfig(size);
-      _currentConfig = config;
-      _gameWorld.updateLayout(config);
+  void _handlePlayerLoaded(PlayerState playerState) {
+    // Update UI with player stats
+    _updatePlayerDisplay(playerState);
+  }
+
+  void _handlePlayerUpdating(PlayerState playerState) {
+    // Show loading indicator if needed
+    if (playerState.coinsEarned > 0) {
+      _showCoinsEarnedEffect(playerState.coinsEarned);
     }
   }
 
-  /// Clean up resources when game is removed
+  void _handleAchievementUnlocks(List<Achievement> achievements) {
+    for (final achievement in achievements) {
+      _showAchievementUnlockEffect(achievement);
+    }
+  }
+
+  // ========================================
+  // PERFORMANCE OPTIMIZATION
+  // ========================================
+
+  void _monitorPerformance(double dt) {
+    // Monitor frame time for performance issues
+    if (dt > 0.020) { // More than 20ms per frame (50 FPS)
+      debugPrint('⚠️ Performance warning: Frame time ${(dt * 1000).toStringAsFixed(1)}ms');
+    }
+  }
+
+  void _updateGameLogic(double dt) {
+    // Update game systems in order
+    _inputSystem.update(dt);
+    _scoringSystem.update(dt);
+    _powerUpSystem.update(dt);
+    
+    // Update game world last
+    _gameWorld.update(dt);
+  }
+
+  void _optimizeRenderingPerformance(Canvas canvas) {
+    // Implement rendering optimizations
+    // - Culling off-screen objects
+    // - Batching similar render calls
+    // - Using object pools for frequently created/destroyed objects
+  }
+
+  void _applyPerformanceSettings(PerformanceMode mode) {
+    switch (mode) {
+      case PerformanceMode.quality:
+        _setQualitySettings();
+        break;
+      case PerformanceMode.balanced:
+        _setBalancedSettings();
+        break;
+      case PerformanceMode.performance:
+        _setPerformanceSettings();
+        break;
+    }
+  }
+
+  void _setQualitySettings() {
+    // Enable all visual effects
+    _gameWorld.setParticlesEnabled(true);
+    _gameWorld.setAnimationsEnabled(true);
+    _gameWorld.setShadowsEnabled(true);
+  }
+
+  void _setBalancedSettings() {
+    // Moderate visual effects
+    _gameWorld.setParticlesEnabled(true);
+    _gameWorld.setAnimationsEnabled(true);
+    _gameWorld.setShadowsEnabled(false);
+  }
+
+  void _setPerformanceSettings() {
+    // Minimal visual effects for best performance
+    _gameWorld.setParticlesEnabled(false);
+    _gameWorld.setAnimationsEnabled(true);
+    _gameWorld.setShadowsEnabled(false);
+  }
+
+  void _applyVisualSettings(UIState uiState) {
+    _gameWorld.setParticlesEnabled(uiState.particlesEnabled);
+    _gameWorld.setAnimationsEnabled(uiState.animationsEnabled);
+    _gameWorld.setShadowsEnabled(uiState.shadowsEnabled);
+  }
+
+  // ========================================
+  // RESPONSIVE DESIGN
+  // ========================================
+
+  void _updateComponentsForNewSize(GameConfig config) {
+    debugPrint('📱 Updating components for new screen size');
+    
+    // Update game world for new screen size
+    _gameWorld.updateSize(config);
+    
+    // Update input system for new touch areas
+    _inputSystem.updateTouchAreas(config);
+    
+    // Update UI elements
+    _updateUIForNewSize(config);
+  }
+
+  void _updateUIForNewSize(GameConfig config) {
+    // Update UI elements that depend on screen size
+    // This would coordinate with Flutter UI overlays
+  }
+
+  // ========================================
+  // VISUAL EFFECTS
+  // ========================================
+
+  void _updatePlayerDisplay(PlayerState playerState) {
+    // Update player stats display in game world
+    _gameWorld.updatePlayerStats(playerState.playerStats);
+  }
+
+  void _showCoinsEarnedEffect(int coinsEarned) {
+    // Show floating coin animation
+    _gameWorld.showCoinsEarned(coinsEarned);
+    
+    // Play coin sound
+    _audioService.playSfx('coins_earned');
+  }
+
+  void _showAchievementUnlockEffect(Achievement achievement) {
+    // Show achievement unlock animation
+    _gameWorld.showAchievementUnlock(achievement);
+    
+    // Play achievement sound
+    _audioService.playSfx('achievement_unlock');
+  }
+
+  // ========================================
+  // PUBLIC API
+  // ========================================
+
+  /// Pause the game
+  void pauseGame() {
+    if (_isInitialized && !_isPaused) {
+      _gameCubit.pauseGame();
+    }
+  }
+
+  /// Resume the game
+  void resumeGame() {
+    if (_isInitialized && _isPaused) {
+      _gameCubit.resumeGame();
+    }
+  }
+
+  /// Check if game is initialized
+  bool get isInitialized => _isInitialized;
+
+  /// Check if game is paused
+  bool get isPaused => _isPaused;
+
+  /// Get current game configuration
+  GameConfig? get currentConfig => _currentConfig;
+
+  // ========================================
+  // CLEANUP
+  // ========================================
+
   @override
   void onRemove() {
-    _audioService.stopAllSounds();
+    // Clean up resources
+    _gameWorld.cleanup();
+    _inputSystem.cleanup();
+    _scoringSystem.cleanup();
+    _powerUpSystem.cleanup();
+    
     super.onRemove();
   }
-
-  // Getters for external access
-  GameWorld get gameWorld => _gameWorld;
-  InputSystem get inputSystem => _inputSystem;
-  ScoringSystem get scoringSystem => _scoringSystem;
-  PowerUpSystem get powerUpSystem => _powerUpSystem;
-  bool get isInitialized => _isInitialized;
-  bool get isPaused => _isPaused;
-  GameConfig? get currentConfig => _currentConfig;
-}
-
-// ✅ FIXED: Add missing enums for state management
-enum GameStateStatus {
-  initial,
-  loading,
-  playing,
-  paused,
-  gameOver,
-  error,
-}
-
-enum PlayerStateStatus {
-  initial,
-  loading,
-  loaded,
-  updating,
-  error,
 }

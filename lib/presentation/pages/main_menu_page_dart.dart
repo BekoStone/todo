@@ -1,8 +1,8 @@
-// File: lib/presentation/pages/main_menu_page.dart
-
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:puzzle_box/core/state/player_state.dart';
+import 'package:puzzle_box/core/state/state_extensions.dart';
 import 'package:puzzle_box/core/state/ui_state.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
@@ -37,6 +37,14 @@ class _MainMenuPageState extends State<MainMenuPage>
     _startAnimations();
   }
 
+  @override
+  void dispose() {
+    _floatingController.dispose();
+    _buttonsController.dispose();
+    _backgroundController.dispose();
+    super.dispose();
+  }
+
   void _initializeAnimations() {
     // Floating animation for logo and elements
     _floatingController = AnimationController(
@@ -46,7 +54,7 @@ class _MainMenuPageState extends State<MainMenuPage>
     
     // Button entrance animations
     _buttonsController = AnimationController(
-      duration: AppConstants.mediumAnimationDuration,
+      duration: const Duration(milliseconds: 800),
       vsync: this,
     );
     
@@ -84,99 +92,131 @@ class _MainMenuPageState extends State<MainMenuPage>
 
   void _startAnimations() {
     _floatingController.repeat(reverse: true);
-    _buttonsController.forward();
     _backgroundController.repeat();
+    
+    // Delay button animation
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        _buttonsController.forward();
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<UICubit, UIState>(
-      builder: (context, uiState) {
-        return Scaffold(
-          body: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  AppColors.primaryBlue,
-                  AppColors.primaryPurple,
-                  AppColors.primaryPink,
-                ],
-                stops: [0.0, 0.6, 1.0],
-              ),
-            ),
-            child: Stack(
-              children: [
-                // Animated background elements
-                _buildAnimatedBackground(),
-                
-                // Main content
-                SafeArea(
-                  child: ResponsiveUtils.buildResponsiveWidget(
-                    context: context,
-                    mobile: _buildMobileLayout(),
-                    tablet: _buildTabletLayout(),
-                    desktop: _buildDesktopLayout(),
-                  ),
-                ),
-                
-                // Settings button
-                _buildSettingsButton(context),
-                
-                // Player stats overlay
-                _buildPlayerStatsOverlay(),
-              ],
-            ),
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              AppColors.darkBackground,
+              AppColors.darkSurface,
+              AppColors.darkSurfaceVariant,
+            ],
           ),
-        );
-      },
+        ),
+        child: Stack(
+          children: [
+            // Animated background elements
+            _buildAnimatedBackground(),
+            
+            // Main content
+            SafeArea(
+              child: ResponsiveUtils.isMobile(context)
+                  ? _buildMobileLayout()
+                  : ResponsiveUtils.isTablet(context)
+                      ? _buildTabletLayout()
+                      : _buildDesktopLayout(),
+            ),
+            
+            // Settings button
+            _buildSettingsButton(context),
+            
+            // Player stats overlay
+            _buildPlayerStatsOverlay(),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildAnimatedBackground() {
-    return AnimatedBuilder(
-      animation: _backgroundController,
-      builder: (context, child) {
-        return Stack(
-          children: [
-            // Floating particles
-            ...List.generate(15, (index) => _buildFloatingParticle(index)),
-            
-            // Rotating geometric shapes
-            ...List.generate(3, (index) => _buildRotatingShape(index)),
-          ],
-        );
-      },
+    return Stack(
+      children: [
+        // Floating shapes
+        ...List.generate(3, (index) => _buildFloatingShape(index)),
+        
+        // Rotating elements
+        ...List.generate(3, (index) => _buildRotatingShape(index)),
+        
+        // Grid pattern overlay
+        _buildGridOverlay(),
+      ],
     );
   }
 
-  Widget _buildFloatingParticle(int index) {
-    final random = (index * 1337) % 1000 / 1000.0;
-    final size = 8.0 + (index % 6) * 4;
-    final color = AppColors.blockColors[index % AppColors.blockColors.length];
+  Widget _buildGridOverlay() {
+    return Positioned.fill(
+      child: Opacity(
+        opacity: 0.05,
+        child: CustomPaint(
+          painter: GridPainter(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingShape(int index) {
+    final positions = [
+      const Offset(0.1, 0.1),
+      const Offset(0.9, 0.15),
+      const Offset(0.05, 0.7),
+    ];
+    
+    final sizes = [40.0, 60.0, 50.0];
+    final colors = [
+      AppColors.primary,
+      AppColors.secondary,
+      AppColors.accent,
+    ];
+    
+    final position = positions[index];
+    final size = sizes[index];
+    final color = colors[index];
     
     return Positioned(
-      left: MediaQuery.of(context).size.width * random,
-      top: MediaQuery.of(context).size.height * random + 
-           _floatingAnimation.value * 30,
-      child: Opacity(
-        opacity: 0.3 + _floatingAnimation.value * 0.3,
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(size / 2),
-            boxShadow: [
-              BoxShadow(
-                color: color.withOpacity(0.3),
-                blurRadius: 8,
-                spreadRadius: 2,
+      left: MediaQuery.of(context).size.width * position.dx,
+      top: MediaQuery.of(context).size.height * position.dy,
+      child: AnimatedBuilder(
+        animation: _floatingAnimation,
+        builder: (context, child) {
+          return Transform.translate(
+            offset: Offset(
+              0,
+              _floatingAnimation.value * 20 - 10,
+            ),
+            child: Opacity(
+              opacity: 0.3 + _floatingAnimation.value * 0.3,
+              child: Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(size / 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withOpacity(0.3),
+                      blurRadius: 8,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -189,9 +229,9 @@ class _MainMenuPageState extends State<MainMenuPage>
     ];
     
     final colors = [
-      AppColors.primaryYellow,
-      AppColors.primaryOrange,
-      AppColors.primaryGreen,
+      AppColors.warning,
+      AppColors.info,
+      AppColors.success,
     ];
     
     final position = positions[index];
@@ -200,20 +240,25 @@ class _MainMenuPageState extends State<MainMenuPage>
     return Positioned(
       left: MediaQuery.of(context).size.width * position.dx,
       top: MediaQuery.of(context).size.height * position.dy,
-      child: Transform.rotate(
-        angle: _backgroundRotation.value + (index * math.pi / 3),
-        child: Container(
-          width: 60,
-          height: 60,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            border: Border.all(
-              color: color.withOpacity(0.3),
-              width: 2,
+      child: AnimatedBuilder(
+        animation: _backgroundRotation,
+        builder: (context, child) {
+          return Transform.rotate(
+            angle: _backgroundRotation.value + (index * math.pi / 3),
+            child: Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                border: Border.all(
+                  color: color.withOpacity(0.3),
+                  width: 2,
+                ),
+                borderRadius: BorderRadius.circular(16),
+              ),
             ),
-            borderRadius: BorderRadius.circular(16),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -269,20 +314,20 @@ class _MainMenuPageState extends State<MainMenuPage>
             // Left side - Logo and info
             Expanded(
               flex: 3,
+              child: _buildLogoSection(),
+            ),
+            
+            // Right side - Menu and stats
+            Expanded(
+              flex: 2,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _buildLogoSection(),
-                  const SizedBox(height: 32),
-                  _buildQuickStats(),
+                  _buildPlayerStatsCard(),
+                  const SizedBox(height: 40),
+                  _buildMenuButtons(),
                 ],
               ),
-            ),
-            
-            // Right side - Menu
-            Expanded(
-              flex: 2,
-              child: _buildMenuButtons(),
             ),
           ],
         ),
@@ -295,105 +340,67 @@ class _MainMenuPageState extends State<MainMenuPage>
       animation: _floatingAnimation,
       builder: (context, child) {
         return Transform.translate(
-          offset: Offset(0, _floatingAnimation.value * 10),
+          offset: Offset(0, _floatingAnimation.value * 10 - 5),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Main logo container
+              // Main logo
               Container(
-                padding: const EdgeInsets.all(32),
+                padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                     colors: [
-                      Colors.white.withOpacity(0.2),
-                      Colors.white.withOpacity(0.1),
+                      AppColors.primary,
+                      AppColors.secondary,
                     ],
                   ),
-                  borderRadius: BorderRadius.circular(32),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.3),
-                    width: 2,
-                  ),
+                  borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: AppColors.primary.withOpacity(0.4),
                       blurRadius: 20,
                       offset: const Offset(0, 10),
                     ),
                   ],
                 ),
-                child: Column(
-                  children: [
-                    // App icon
-                    Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [
-                            AppColors.primaryYellow,
-                            AppColors.primaryOrange,
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.primaryYellow.withOpacity(0.4),
-                            blurRadius: 16,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.grid_3x3,
-                        size: 48,
-                        color: Colors.white,
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 24),
-                    
-                    // App name
-                    const Text(
-                      'Box Hooks',
-                      style: TextStyle(
-                        fontSize: 42,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: 2,
-                        shadows: [
-                          Shadow(
-                            offset: Offset(2, 2),
-                            blurRadius: 4,
-                            color: Colors.black26,
-                          ),
-                        ],
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 8),
-                    
-                    // Tagline
-                    Text(
-                      'Colorful Puzzle Adventure',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.white.withOpacity(0.8),
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ],
+                child: const Icon(
+                  Icons.extension_rounded,
+                  color: Colors.white,
+                  size: 64,
                 ),
               ),
               
               const SizedBox(height: 24),
               
-              // Version info
-              Text(
-                'Version ${AppConstants.appVersion}',
+              // App name
+              const Text(
+                AppConstants.appName,
                 style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.white.withOpacity(0.6),
+                  fontSize: 42,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 2.0,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black26,
+                      offset: Offset(0, 2),
+                      blurRadius: 4,
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 12),
+              
+              // Tagline
+              Text(
+                'Puzzle Your Way to Victory',
+                style: TextStyle(
+                  fontSize: 18,
+                  color: Colors.white.withOpacity(0.8),
+                  letterSpacing: 1.0,
                 ),
               ),
             ],
@@ -409,47 +416,67 @@ class _MainMenuPageState extends State<MainMenuPage>
       builder: (context, child) {
         return Transform.scale(
           scale: _buttonsAnimation.value,
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+          child: Opacity(
+            opacity: _buttonsAnimation.value,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Play button
-                  _buildAnimatedMenuButton(
-                    text: 'PLAY',
+                  // New Game button
+                  GradientButton(
+                    text: 'New Game',
                     icon: Icons.play_arrow_rounded,
-                    color: AppColors.primaryGreen,
-                    onPressed: () => _navigateToGame(context),
-                    delay: 0,
+                    onPressed: () => _startNewGame(),
+                    gradient: const LinearGradient(
+                      colors: [AppColors.primary, AppColors.secondary],
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Continue Game button
+                  BlocBuilder<PlayerCubit, PlayerState>(
+                    builder: (context, playerState) {
+                      final hasSavedGame = playerState.playerStats?.hasSavedGame ?? false;
+                      
+                      return GradientButton(
+                        text: 'Continue',
+                        icon: Icons.refresh_rounded,
+                        onPressed: hasSavedGame ? () => _continueGame() : null,
+                        gradient: hasSavedGame
+                            ? const LinearGradient(
+                                colors: [AppColors.success, AppColors.info],
+                              )
+                            : null,
+                        backgroundColor: hasSavedGame ? null : Colors.grey.withOpacity(0.3),
+                      );
+                    },
                   ),
                   
                   const SizedBox(height: 16),
                   
                   // Achievements button
-                  _buildAnimatedMenuButton(
-                    text: 'ACHIEVEMENTS',
+                  GradientButton(
+                    text: 'Achievements',
                     icon: Icons.emoji_events_rounded,
-                    color: AppColors.primaryYellow,
-                    onPressed: () => _navigateToAchievements(context),
-                    delay: 100,
+                    onPressed: () => _showAchievements(),
+                    gradient: const LinearGradient(
+                      colors: [AppColors.warning, AppColors.error],
+                    ),
                   ),
                   
                   const SizedBox(height: 16),
                   
-                  // Store button
-                  _buildAnimatedMenuButton(
-                    text: 'STORE',
-                    icon: Icons.shopping_bag_rounded,
-                    color: AppColors.primaryPink,
-                    onPressed: () => _navigateToStore(context),
-                    delay: 200,
+                  // Leaderboard button
+                  GradientButton(
+                    text: 'Leaderboard',
+                    icon: Icons.leaderboard_rounded,
+                    onPressed: () => _showLeaderboard(),
+                    gradient: const LinearGradient(
+                      colors: [AppColors.info, AppColors.primary],
+                    ),
                   ),
-                  
-                  const SizedBox(height: 24),
-                  
-                  // Daily reward section
-                  _buildDailyRewardSection(),
                 ],
               ),
             ),
@@ -459,157 +486,21 @@ class _MainMenuPageState extends State<MainMenuPage>
     );
   }
 
-  Widget _buildAnimatedMenuButton({
-    required String text,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onPressed,
-    required int delay,
-  }) {
-    return TweenAnimationBuilder<double>(
-      duration: Duration(milliseconds: 600 + delay),
-      tween: Tween(begin: 0.0, end: 1.0),
-      curve: Curves.elasticOut,
-      builder: (context, value, child) {
-        return Transform.scale(
-          scale: value,
-          child: Transform.translate(
-            offset: Offset(0, (1 - value) * 50),
-            child: Container(
-              width: double.infinity,
-              constraints: const BoxConstraints(maxWidth: 320),
-              child: GradientButton(
-                onPressed: onPressed,
-                gradient: LinearGradient(
-                  colors: [color, color.withOpacity(0.8)],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(icon, color: Colors.white, size: 28),
-                    const SizedBox(width: 12),
-                    Text(
-                      text,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildDailyRewardSection() {
+  Widget _buildPlayerStatsCard() {
     return BlocBuilder<PlayerCubit, PlayerState>(
       builder: (context, playerState) {
-        // Check if daily reward is available (simplified logic)
-        final canClaimDaily = true; // Would check last claim time
-        
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                AppColors.primaryOrange.withOpacity(0.3),
-                AppColors.primaryYellow.withOpacity(0.2),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: AppColors.primaryYellow.withOpacity(0.5),
-              width: 2,
-            ),
-          ),
-          child: Row(
-            children: [
-              // Reward icon
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryYellow.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.card_giftcard_rounded,
-                  color: AppColors.primaryYellow,
-                  size: 24,
-                ),
-              ),
-              
-              const SizedBox(width: 16),
-              
-              // Reward info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      canClaimDaily ? 'Daily Reward Ready!' : 'Next Reward in 2h',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    Text(
-                      '+25 Coins',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.white.withOpacity(0.8),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              
-              // Claim button
-              if (canClaimDaily)
-                GradientButton(
-                  onPressed: () => _claimDailyReward(context),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  gradient: const LinearGradient(
-                    colors: [AppColors.primaryGreen, AppColors.primaryBlue],
-                  ),
-                  child: const Text(
-                    'CLAIM',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildQuickStats() {
-    return BlocBuilder<PlayerCubit, PlayerState>(
-      builder: (context, playerState) {
-        if (!playerState.hasPlayerStats) {
+        if (!playerState.isDataLoaded || playerState.playerStats == null) {
           return const SizedBox();
         }
-        
+
         final stats = playerState.playerStats!;
         
         return Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
               colors: [
                 Colors.white.withOpacity(0.1),
                 Colors.white.withOpacity(0.05),
@@ -623,9 +514,8 @@ class _MainMenuPageState extends State<MainMenuPage>
           ),
           child: Column(
             children: [
-              // Title
               const Text(
-                'Your Progress',
+                'Your Stats',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -635,24 +525,23 @@ class _MainMenuPageState extends State<MainMenuPage>
               
               const SizedBox(height: 16),
               
-              // Stats row
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   _buildStatItem(
-                    label: 'High Score',
-                    value: stats.highScore,
-                    icon: Icons.emoji_events,
+                    Icons.star_rounded,
+                    stats.highScore,
+                    'High Score',
                   ),
                   _buildStatItem(
-                    label: 'Games',
-                    value: stats.gamesPlayed,
-                    icon: Icons.games,
+                    Icons.monetization_on_rounded,
+                    stats.totalCoins,
+                    'Coins',
                   ),
                   _buildStatItem(
-                    label: 'Achievements',
-                    value: playerState.unlockedAchievements,
-                    icon: Icons.star,
+                    Icons.games_rounded,
+                    stats.totalGamesPlayed,
+                    'Games',
                   ),
                 ],
               ),
@@ -663,16 +552,12 @@ class _MainMenuPageState extends State<MainMenuPage>
     );
   }
 
-  Widget _buildStatItem({
-    required String label,
-    required int value,
-    required IconData icon,
-  }) {
+  Widget _buildStatItem(IconData icon, int value, String label) {
     return Column(
       children: [
         Icon(
           icon,
-          color: AppColors.primaryYellow,
+          color: AppColors.warning,
           size: 24,
         ),
         const SizedBox(height: 4),
@@ -724,7 +609,7 @@ class _MainMenuPageState extends State<MainMenuPage>
   Widget _buildPlayerStatsOverlay() {
     return BlocBuilder<PlayerCubit, PlayerState>(
       builder: (context, playerState) {
-        if (!playerState.hasPlayerStats) {
+        if (!playerState.isDataLoaded || playerState.playerStats == null) {
           return const SizedBox();
         }
         
@@ -736,24 +621,21 @@ class _MainMenuPageState extends State<MainMenuPage>
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  AppColors.primaryYellow.withOpacity(0.9),
-                  AppColors.primaryOrange.withOpacity(0.8),
+                  AppColors.warning.withOpacity(0.9),
+                  AppColors.warning.withOpacity(0.7),
                 ],
               ),
               borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryYellow.withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              border: Border.all(
+                color: Colors.white.withOpacity(0.3),
+                width: 1,
+              ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(
-                  Icons.monetization_on,
+                  Icons.monetization_on_rounded,
                   color: Colors.white,
                   size: 20,
                 ),
@@ -774,42 +656,53 @@ class _MainMenuPageState extends State<MainMenuPage>
     );
   }
 
-  // Navigation methods
-  void _navigateToGame(BuildContext context) {
+  // Action handlers
+  void _startNewGame() {
     context.read<UICubit>().navigateToPage(AppPage.game);
   }
 
-  void _navigateToAchievements(BuildContext context) {
+  void _continueGame() {
+    context.read<UICubit>().navigateToPage(AppPage.game, arguments: {'continue': true});
+  }
+
+  void _showAchievements() {
     context.read<UICubit>().navigateToPage(AppPage.achievements);
   }
 
-  void _navigateToStore(BuildContext context) {
-    context.read<UICubit>().navigateToPage(AppPage.store);
+  void _showLeaderboard() {
+    context.read<UICubit>().navigateToPage(AppPage.leaderboard);
   }
+}
 
-  void _claimDailyReward(BuildContext context) {
-    // Would implement daily reward logic
-    context.read<PlayerCubit>().addCoins(25, source: 'daily_reward');
+/// Custom painter for grid overlay
+class GridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withOpacity(0.1)
+      ..strokeWidth = 1;
+
+    const spacing = 40.0;
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.card_giftcard, color: Colors.white),
-            SizedBox(width: 8),
-            Text('Daily reward claimed! +25 coins'),
-          ],
-        ),
-        backgroundColor: AppColors.success,
-      ),
-    );
+    // Draw vertical lines
+    for (double x = 0; x < size.width; x += spacing) {
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset(x, size.height),
+        paint,
+      );
+    }
+    
+    // Draw horizontal lines
+    for (double y = 0; y < size.height; y += spacing) {
+      canvas.drawLine(
+        Offset(0, y),
+        Offset(size.width, y),
+        paint,
+      );
+    }
   }
 
   @override
-  void dispose() {
-    _floatingController.dispose();
-    _buttonsController.dispose();
-    _backgroundController.dispose();
-    super.dispose();
-  }
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

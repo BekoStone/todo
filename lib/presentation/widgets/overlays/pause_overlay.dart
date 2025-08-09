@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
 import 'package:puzzle_box/domain/entities/game_session_entity.dart';
-import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
 import '../common/gradient_button.dart';
-import '../../../core/theme/app_theme.dart';
+import '../common/animated_counter.dart';
+import '../../../core/theme/colors.dart';
 import '../../../core/utils/responsive_utils.dart';
-import '../../../core/services/audio_service.dart';
 
 class PauseOverlay extends StatefulWidget {
   /// The current game session
@@ -23,9 +21,6 @@ class PauseOverlay extends StatefulWidget {
   
   /// Callback when settings is requested
   final VoidCallback? onSettings;
-  
-  /// Whether the overlay can be dismissed by tapping outside
-  final bool dismissible;
 
   const PauseOverlay({
     super.key,
@@ -34,7 +29,6 @@ class PauseOverlay extends StatefulWidget {
     this.onRestart,
     this.onMainMenu,
     this.onSettings,
-    this.dismissible = true,
   });
 
   @override
@@ -43,622 +37,521 @@ class PauseOverlay extends StatefulWidget {
 
 class _PauseOverlayState extends State<PauseOverlay>
     with TickerProviderStateMixin {
-  late AnimationController _scaleController;
+  late AnimationController _slideController;
   late AnimationController _fadeController;
-  late AnimationController _iconController;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _fadeAnimation;
-  late Animation<double> _iconAnimation;
+  late AnimationController _pulseController;
   
-  bool _showQuickStats = false;
+  late Animation<Offset> _slideAnimation;
+  late Animation<double> _fadeAnimation;
+  late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
     _setupAnimations();
-    _startAnimationSequence();
-    AudioService.playSfx('pause');
-  }
-
-  void _setupAnimations() {
-    _scaleController = AnimationController(
-      duration: const Duration(milliseconds: 400),
-      vsync: this,
-    );
-
-    _fadeController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-
-    _iconController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    );
-
-    _scaleAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _scaleController,
-      curve: Curves.elasticOut,
-    ));
-
-    _fadeAnimation = CurvedAnimation(
-      parent: _fadeController,
-      curve: Curves.easeOut,
-    );
-
-    _iconAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _iconController,
-      curve: Curves.easeInOut,
-    ));
-  }
-
-  void _startAnimationSequence() async {
-    await _scaleController.forward();
-    await Future.delayed(const Duration(milliseconds: 200));
-    
-    setState(() {
-      _showQuickStats = true;
-    });
-    
-    _fadeController.forward();
-    _iconController.repeat();
+    _startAnimations();
   }
 
   @override
   void dispose() {
-    _scaleController.dispose();
+    _slideController.dispose();
     _fadeController.dispose();
-    _iconController.dispose();
+    _pulseController.dispose();
     super.dispose();
+  }
+
+  void _setupAnimations() {
+    _slideController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+
+    _pulseController = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, -1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _slideController,
+      curve: Curves.elasticOut,
+    ));
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    ));
+
+    _pulseAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.05,
+    ).animate(CurvedAnimation(
+      parent: _pulseController,
+      curve: Curves.easeInOut,
+    ));
+  }
+
+  void _startAnimations() {
+    _fadeController.forward();
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        _slideController.forward();
+      }
+    });
+    
+    // Start pulse animation for resume button
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) {
+        _pulseController.repeat(reverse: true);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: widget.dismissible ? _resumeGame : null,
-      child: Material(
-        color: Colors.black.withOpacity(0.8),
-        child: Center(
-          child: ScaleTransition(
-            scale: _scaleAnimation,
-            child: Container(
-              margin: EdgeInsets.all(ResponsiveUtils.wp(6)),
-              constraints: BoxConstraints(
-                maxWidth: ResponsiveUtils.wp(85),
-                maxHeight: ResponsiveUtils.hp(70),
-              ),
-              decoration: _buildOverlayDecoration(),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildHeader(),
-                  Flexible(
-                    child: SingleChildScrollView(
-                      padding: EdgeInsets.all(ResponsiveUtils.wp(6)),
-                      child: Column(
-                        children: [
-                          if (_showQuickStats) _buildQuickStats(),
-                          SizedBox(height: ResponsiveUtils.hp(3)),
-                          _buildActionButtons(),
-                          SizedBox(height: ResponsiveUtils.hp(2)),
-                          _buildSettingsToggle(),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  BoxDecoration _buildOverlayDecoration() {
-    return BoxDecoration(
-      gradient: AppTheme.surfaceGradient,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(
-        color: AppTheme.primaryColor.withOpacity(0.3),
-        width: 2,
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.3),
-          blurRadius: 20,
-          offset: const Offset(0, 10),
-        ),
-        BoxShadow(
-          color: AppTheme.primaryColor.withOpacity(0.1),
-          blurRadius: 30,
-          offset: const Offset(0, 0),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildHeader() {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(ResponsiveUtils.wp(4)),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.primaryColor.withOpacity(0.8),
-            AppTheme.primaryColor.withOpacity(0.6),
-          ],
-        ),
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(18),
-          topRight: Radius.circular(18),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
         children: [
-          AnimatedBuilder(
-            animation: _iconAnimation,
-            builder: (context, child) {
-              return Transform.scale(
-                scale: 1.0 + (_iconAnimation.value * 0.1),
-                child: Icon(
-                  Icons.pause_circle_filled_rounded,
-                  color: Colors.white,
-                  size: ResponsiveUtils.sp(32),
-                ),
-              );
-            },
-          ),
-          SizedBox(width: ResponsiveUtils.wp(3)),
-          Text(
-            'GAME PAUSED',
-            style: AppTheme.headlineStyle.copyWith(
-              fontSize: ResponsiveUtils.sp(24),
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.2,
-            ),
-          ),
+          // Blurred background
+          _buildBlurredBackground(),
+          
+          // Main overlay content
+          _buildOverlayContent(),
         ],
       ),
     );
   }
 
-  Widget _buildQuickStats() {
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: Container(
-        padding: EdgeInsets.all(ResponsiveUtils.wp(4)),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.2),
-            width: 1,
-          ),
-        ),
-        child: Column(
-          children: [
-            Text(
-              'Current Progress',
-              style: AppTheme.titleStyle.copyWith(
-                fontSize: ResponsiveUtils.sp(16),
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            SizedBox(height: ResponsiveUtils.hp(2)),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildStatCard(
-                  'Score',
-                  _formatNumber(widget.gameSession.score),
-                  Icons.emoji_events_rounded,
-                  AppTheme.primaryColor,
-                ),
-                _buildStatCard(
-                  'Level',
-                  widget.gameSession.level.toString(),
-                  Icons.trending_up_rounded,
-                  AppTheme.accentColor,
-                ),
-                _buildStatCard(
-                  'Time',
-                  _formatTime(widget.gameSession.playTime),
-                  Icons.timer_rounded,
-                  AppTheme.secondaryColor,
-                ),
-              ],
-            ),
-            SizedBox(height: ResponsiveUtils.hp(2)),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildStatCard(
-                  'Lines',
-                  widget.gameSession.linesCleared.toString(),
-                  Icons.linear_scale_rounded,
-                  AppTheme.primaryColor,
-                ),
-                _buildStatCard(
-                  'Combo',
-                  'x${widget.gameSession.currentCombo}',
-                  Icons.local_fire_department_rounded,
-                  Colors.orange,
-                ),
-                _buildStatCard(
-                  'Blocks',
-                  widget.gameSession.blocksPlaced.toString(),
-                  Icons.apps_rounded,
-                  AppTheme.accentColor,
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatCard(String label, String value, IconData icon, Color color) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: ResponsiveUtils.wp(3),
-        vertical: ResponsiveUtils.hp(1),
-      ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            color.withOpacity(0.3),
-            color.withOpacity(0.1),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withOpacity(0.5),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            icon,
-            color: color,
-            size: ResponsiveUtils.sp(18),
-          ),
-          SizedBox(height: ResponsiveUtils.hp(0.5)),
-          Text(
-            value,
-            style: AppTheme.titleStyle.copyWith(
-              fontSize: ResponsiveUtils.sp(14),
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-          Text(
-            label,
-            style: AppTheme.bodyStyle.copyWith(
-              fontSize: ResponsiveUtils.sp(10),
-              color: Colors.white60,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButtons() {
-    return Column(
-      children: [
-        // Resume button
-        GradientButton.primary(
-          onPressed: _resumeGame,
-          width: double.infinity,
-          leadingIcon: Icons.play_arrow_rounded,
-          child: Text(
-            'RESUME GAME',
-            style: AppTheme.buttonStyle.copyWith(
-              fontSize: ResponsiveUtils.sp(18),
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        
-        SizedBox(height: ResponsiveUtils.hp(1.5)),
-        
-        // Secondary actions
-        Row(
-          children: [
-            Expanded(
-              child: GradientButton.outlined(
-                onPressed: () {
-                  AudioService.playSfx('button_click');
-                  _showRestartConfirmation();
-                },
-                leadingIcon: Icons.refresh_rounded,
-                child: Text(
-                  'RESTART',
-                  style: AppTheme.buttonStyle.copyWith(
-                    fontSize: ResponsiveUtils.sp(14),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(width: ResponsiveUtils.wp(3)),
-            Expanded(
-              child: GradientButton.outlined(
-                onPressed: () {
-                  AudioService.playSfx('button_click');
-                  widget.onSettings?.call();
-                },
-                leadingIcon: Icons.settings_rounded,
-                child: Text(
-                  'SETTINGS',
-                  style: AppTheme.buttonStyle.copyWith(
-                    fontSize: ResponsiveUtils.sp(14),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        
-        SizedBox(height: ResponsiveUtils.hp(1)),
-        
-        // Menu button
-        TextButton(
-          onPressed: () {
-            AudioService.playSfx('button_click');
-            _showMenuConfirmation();
-          },
-          child: Text(
-            'Back to Menu',
-            style: AppTheme.bodyStyle.copyWith(
-              fontSize: ResponsiveUtils.sp(14),
-              color: Colors.white60,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSettingsToggle() {
-    return BlocBuilder<UICubit, UIState>(
-      builder: (context, state) {
-        return Container(
-          padding: EdgeInsets.all(ResponsiveUtils.wp(3)),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.1),
-              width: 1,
-            ),
-          ),
-          child: Column(
-            children: [
-              Text(
-                'Quick Settings',
-                style: AppTheme.titleStyle.copyWith(
-                  fontSize: ResponsiveUtils.sp(14),
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white70,
-                ),
-              ),
-              SizedBox(height: ResponsiveUtils.hp(1)),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildQuickToggle(
-                    'Sound',
-                    Icons.volume_up_rounded,
-                    state.soundEnabled,
-                    () => context.read<UICubit>().toggleSound(),
-                  ),
-                  _buildQuickToggle(
-                    'Music',
-                    Icons.music_note_rounded,
-                    state.musicEnabled,
-                    () => context.read<UICubit>().toggleMusic(),
-                  ),
-                  _buildQuickToggle(
-                    'Vibration',
-                    Icons.vibration_rounded,
-                    state.vibrationEnabled,
-                    () => context.read<UICubit>().toggleVibration(),
-                  ),
-                ],
-              ),
-            ],
+  Widget _buildBlurredBackground() {
+    return AnimatedBuilder(
+      animation: _fadeAnimation,
+      builder: (context, child) {
+        return Opacity(
+          opacity: _fadeAnimation.value * 0.8,
+          child: Container(
+            width: double.infinity,
+            height: double.infinity,
+            color: Colors.black,
           ),
         );
       },
     );
   }
 
-  Widget _buildQuickToggle(
-    String label,
-    IconData icon,
-    bool value,
-    VoidCallback onTap,
-  ) {
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        onTap();
-      },
-      child: Container(
-        padding: EdgeInsets.all(ResponsiveUtils.wp(2)),
-        decoration: BoxDecoration(
-          color: value 
-              ? AppTheme.primaryColor.withOpacity(0.3)
-              : Colors.white.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: value 
-                ? AppTheme.primaryColor.withOpacity(0.5)
-                : Colors.white.withOpacity(0.2),
-            width: 1,
-          ),
-        ),
-        child: Column(
-          children: [
-            Icon(
-              icon,
-              color: value ? AppTheme.primaryColor : Colors.white54,
-              size: ResponsiveUtils.sp(20),
+  Widget _buildOverlayContent() {
+    return SafeArea(
+      child: Center(
+        child: SlideTransition(
+          position: _slideAnimation,
+          child: Container(
+            margin: EdgeInsets.symmetric(
+              horizontal: ResponsiveUtils.wp(5),
             ),
-            SizedBox(height: ResponsiveUtils.hp(0.5)),
-            Text(
-              label,
-              style: AppTheme.bodyStyle.copyWith(
-                fontSize: ResponsiveUtils.sp(10),
-                color: value ? AppTheme.primaryColor : Colors.white54,
-                fontWeight: FontWeight.w600,
+            padding: EdgeInsets.all(ResponsiveUtils.wp(6)),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.darkSurface.withOpacity(0.95),
+                  AppColors.darkSurfaceVariant.withOpacity(0.95),
+                ],
               ),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: AppColors.primary.withOpacity(0.3),
+                width: 2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.5),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
-          ],
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Pause icon and title
+                _buildHeader(),
+                
+                SizedBox(height: ResponsiveUtils.hp(3)),
+                
+                // Game stats
+                _buildGameStats(),
+                
+                SizedBox(height: ResponsiveUtils.hp(4)),
+                
+                // Action buttons
+                _buildActionButtons(),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
-  void _resumeGame() {
-    HapticFeedback.mediumImpact();
-    AudioService.playSfx('resume');
-    widget.onResume?.call();
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        // Pause icon
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [AppColors.primary, AppColors.secondary],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withOpacity(0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Icon(
+            Icons.pause_rounded,
+            color: Colors.white,
+            size: ResponsiveUtils.sp(32),
+          ),
+        ),
+        
+        SizedBox(height: ResponsiveUtils.hp(2)),
+        
+        // Title
+        Text(
+          'Game Paused',
+          style: TextStyle(
+            fontSize: ResponsiveUtils.sp(24),
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        
+        SizedBox(height: ResponsiveUtils.hp(1)),
+        
+        // Subtitle
+        Text(
+          'Take a break and come back when ready',
+          style: TextStyle(
+            fontSize: ResponsiveUtils.sp(14),
+            color: Colors.white.withOpacity(0.7),
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGameStats() {
+    return Container(
+      padding: EdgeInsets.all(ResponsiveUtils.wp(4)),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          Text(
+            'Current Progress',
+            style: TextStyle(
+              fontSize: ResponsiveUtils.sp(16),
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          
+          SizedBox(height: ResponsiveUtils.hp(2)),
+          
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildStatItem(
+                'Score',
+                widget.gameSession.currentScore,
+                Icons.star_rounded,
+                AppColors.warning,
+              ),
+              _buildStatItem(
+                'Level',
+                widget.gameSession.currentLevel,
+                Icons.trending_up_rounded,
+                AppColors.success,
+              ),
+              _buildStatItem(
+                'Lines',
+                widget.gameSession.linesCleared,
+                Icons.horizontal_rule_rounded,
+                AppColors.info,
+              ),
+            ],
+          ),
+          
+          SizedBox(height: ResponsiveUtils.hp(2)),
+          
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildStatItem(
+                'Combo',
+                widget.gameSession.comboCount,
+                Icons.local_fire_department_rounded,
+                AppColors.error,
+              ),
+              _buildStatItem(
+                'Time',
+                _formatDuration(widget.gameSession.actualPlayTime),
+                Icons.timer_rounded,
+                AppColors.primary,
+              ),
+              _buildStatItem(
+                'Blocks',
+                widget.gameSession.statistics.blocksPlaced,
+                Icons.apps_rounded,
+                AppColors.secondary,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem(String label, dynamic value, IconData icon, Color color) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            icon,
+            color: color,
+            size: ResponsiveUtils.sp(20),
+          ),
+        ),
+        
+        SizedBox(height: ResponsiveUtils.hp(0.5)),
+        
+        value is int 
+            ? AnimatedCounter(
+                value: value,
+                style: TextStyle(
+                  fontSize: ResponsiveUtils.sp(16),
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              )
+            : Text(
+                value.toString(),
+                style: TextStyle(
+                  fontSize: ResponsiveUtils.sp(16),
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+        
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: ResponsiveUtils.sp(12),
+            color: Colors.white.withOpacity(0.7),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Column(
+      children: [
+        // Resume button (primary action)
+        AnimatedBuilder(
+          animation: _pulseAnimation,
+          builder: (context, child) {
+            return Transform.scale(
+              scale: _pulseAnimation.value,
+              child: GradientButton.primary(
+                text: 'Resume Game',
+                icon: Icons.play_arrow_rounded,
+                onPressed: () {
+                  HapticFeedback.mediumImpact();
+                  widget.onResume?.call();
+                },
+                width: double.infinity,
+                height: ResponsiveUtils.hp(6),
+              ),
+            );
+          },
+        ),
+        
+        SizedBox(height: ResponsiveUtils.hp(2)),
+        
+        // Secondary actions
+        Row(
+          children: [
+            // Settings button
+            Expanded(
+              child: GradientButton(
+                text: 'Settings',
+                icon: Icons.settings_rounded,
+                onPressed: () {
+                  HapticFeedback.lightImpact();
+                  widget.onSettings?.call();
+                },
+                backgroundColor: Colors.white.withOpacity(0.1),
+                textColor: Colors.white,
+                height: ResponsiveUtils.hp(5),
+              ),
+            ),
+            
+            SizedBox(width: ResponsiveUtils.wp(3)),
+            
+            // Restart button
+            Expanded(
+              child: GradientButton(
+                text: 'Restart',
+                icon: Icons.refresh_rounded,
+                onPressed: () {
+                  HapticFeedback.lightImpact();
+                  _showRestartConfirmation();
+                },
+                backgroundColor: AppColors.warning.withOpacity(0.2),
+                textColor: AppColors.warning,
+                height: ResponsiveUtils.hp(5),
+              ),
+            ),
+          ],
+        ),
+        
+        SizedBox(height: ResponsiveUtils.hp(1.5)),
+        
+        // Main menu button
+        GradientButton(
+          text: 'Main Menu',
+          icon: Icons.home_rounded,
+          onPressed: () {
+            HapticFeedback.lightImpact();
+            _showMainMenuConfirmation();
+          },
+          backgroundColor: AppColors.error.withOpacity(0.2),
+          textColor: AppColors.error,
+          width: double.infinity,
+          height: ResponsiveUtils.hp(5),
+        ),
+      ],
+    );
   }
 
   void _showRestartConfirmation() {
     showDialog(
       context: context,
-      barrierDismissible: true,
       builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.surfaceColor,
+        backgroundColor: AppColors.darkSurface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
-        title: Row(
-          children: [
-            Icon(
-              Icons.refresh_rounded,
-              color: Colors.orange,
-              size: ResponsiveUtils.sp(24),
-            ),
-            SizedBox(width: ResponsiveUtils.wp(2)),
-            Text(
-              'Restart Game?',
-              style: AppTheme.titleStyle.copyWith(
-                fontSize: ResponsiveUtils.sp(18),
-                color: Colors.orange,
-              ),
-            ),
-          ],
+        title: const Text(
+          'Restart Game',
+          style: TextStyle(color: Colors.white),
         ),
-        content: Text(
-          'This will restart your current game and you\'ll lose all progress. Are you sure?',
-          style: AppTheme.bodyStyle.copyWith(
-            fontSize: ResponsiveUtils.sp(14),
-          ),
+        content: const Text(
+          'Are you sure you want to restart? All current progress will be lost.',
+          style: TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text(
+            child: const Text(
               'Cancel',
-              style: AppTheme.bodyStyle.copyWith(
-                color: Colors.white70,
-              ),
+              style: TextStyle(color: Colors.white70),
             ),
           ),
-          GradientButton.danger(
+          TextButton(
             onPressed: () {
               Navigator.of(context).pop();
               widget.onRestart?.call();
             },
-            child: const Text('Restart'),
+            child: const Text(
+              'Restart',
+              style: TextStyle(color: AppColors.warning),
+            ),
           ),
         ],
       ),
     );
   }
 
-  void _showMenuConfirmation() {
+  void _showMainMenuConfirmation() {
     showDialog(
       context: context,
-      barrierDismissible: true,
       builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.surfaceColor,
+        backgroundColor: AppColors.darkSurface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
-        title: Row(
-          children: [
-            Icon(
-              Icons.home_rounded,
-              color: Colors.red,
-              size: ResponsiveUtils.sp(24),
-            ),
-            SizedBox(width: ResponsiveUtils.wp(2)),
-            Text(
-              'Exit to Menu?',
-              style: AppTheme.titleStyle.copyWith(
-                fontSize: ResponsiveUtils.sp(18),
-                color: Colors.red,
-              ),
-            ),
-          ],
+        title: const Text(
+          'Exit to Main Menu',
+          style: TextStyle(color: Colors.white),
         ),
-        content: Text(
-          'This will end your current game and return to the main menu. Your progress will be lost.',
-          style: AppTheme.bodyStyle.copyWith(
-            fontSize: ResponsiveUtils.sp(14),
-          ),
+        content: const Text(
+          'Your progress will be automatically saved. Are you sure you want to exit?',
+          style: TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text(
+            child: const Text(
               'Cancel',
-              style: AppTheme.bodyStyle.copyWith(
-                color: Colors.white70,
-              ),
+              style: TextStyle(color: Colors.white70),
             ),
           ),
-          GradientButton.danger(
+          TextButton(
             onPressed: () {
               Navigator.of(context).pop();
               widget.onMainMenu?.call();
             },
-            child: const Text('Exit'),
+            child: const Text(
+              'Exit',
+              style: TextStyle(color: AppColors.error),
+            ),
           ),
         ],
       ),
     );
   }
 
-  String _formatNumber(int number) {
-    if (number >= 1000000) {
-      return '${(number / 1000000).toStringAsFixed(1)}M';
-    } else if (number >= 1000) {
-      return '${(number / 1000).toStringAsFixed(1)}K';
+  String _formatDuration(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+    
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    } else if (minutes > 0) {
+      return '${minutes}m ${seconds}s';
+    } else {
+      return '${seconds}s';
     }
-    return number.toString();
-  }
-
-  String _formatTime(int seconds) {
-    final minutes = seconds ~/ 60;
-    final remainingSeconds = seconds % 60;
-    return '${minutes}:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 }

@@ -1,54 +1,26 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 
-/// A widget that animates changes to a numeric value with customizable styling
 class AnimatedCounter extends StatefulWidget {
-  /// The current value to display
   final int value;
-  
-  /// Text style for the counter
   final TextStyle? style;
-  
-  /// Duration of the animation
   final Duration duration;
-  
-  /// Animation curve
+  final String? prefix;
+  final String? suffix;
   final Curve curve;
-  
-  /// Prefix text (e.g., "$", "Level ")
-  final String prefix;
-  
-  /// Suffix text (e.g., "pts", "%", "coins")
-  final String suffix;
-  
-  /// Whether to format numbers with comma separators
-  final bool useCommaFormat;
-  
-  /// Whether to use compact notation for large numbers (1K, 1M, etc.)
-  final bool useCompactFormat;
-  
-  /// Text alignment
   final TextAlign textAlign;
-  
-  /// Whether to animate digits individually (more visually appealing)
-  final bool animateDigitsIndividually;
-  
-  /// Whether to show a subtle bounce effect when value changes
-  final bool enableBounceEffect;
+  final bool useCommaForThousands;
 
   const AnimatedCounter({
     super.key,
     required this.value,
     this.style,
     this.duration = const Duration(milliseconds: 800),
+    this.prefix,
+    this.suffix,
     this.curve = Curves.easeOutCubic,
-    this.prefix = '',
-    this.suffix = '',
-    this.useCommaFormat = false,
-    this.useCompactFormat = false,
     this.textAlign = TextAlign.center,
-    this.animateDigitsIndividually = true,
-    this.enableBounceEffect = true,
+    this.useCommaForThousands = true,
   });
 
   @override
@@ -56,21 +28,320 @@ class AnimatedCounter extends StatefulWidget {
 }
 
 class _AnimatedCounterState extends State<AnimatedCounter>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late AnimationController _bounceController;
   late Animation<double> _animation;
-  late Animation<double> _bounceAnimation;
+  int _previousValue = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    
+    _controller = AnimationController(
+      duration: widget.duration,
+      vsync: this,
+    );
+
+    _animation = Tween<double>(
+      begin: 0,
+      end: widget.value.toDouble(),
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: widget.curve,
+    ));
+
+    _previousValue = widget.value;
+    _controller.forward();
+  }
+
+  @override
+  void didUpdateWidget(AnimatedCounter oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    if (oldWidget.value != widget.value) {
+      _previousValue = oldWidget.value;
+      
+      _animation = Tween<double>(
+        begin: _previousValue.toDouble(),
+        end: widget.value.toDouble(),
+      ).animate(CurvedAnimation(
+        parent: _controller,
+        curve: widget.curve,
+      ));
+      
+      _controller.reset();
+      _controller.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  String _formatNumber(double value) {
+    final intValue = value.round();
+    
+    if (!widget.useCommaForThousands) {
+      return intValue.toString();
+    }
+    
+    // Add comma separators for thousands
+    final formatter = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
+    return intValue.toString().replaceAllMapped(
+      formatter,
+      (Match match) => '${match[1]},',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        final displayValue = _formatNumber(_animation.value);
+        final text = '${widget.prefix ?? ''}$displayValue${widget.suffix ?? ''}';
+        
+        return Text(
+          text,
+          style: widget.style,
+          textAlign: widget.textAlign,
+        );
+      },
+    );
+  }
+}
+
+/// Advanced animated counter with more visual effects
+class FancyAnimatedCounter extends StatefulWidget {
+  final int value;
+  final TextStyle? style;
+  final Duration duration;
+  final String? prefix;
+  final String? suffix;
+  final Color? highlightColor;
+  final bool showPlusAnimation;
+  final VoidCallback? onAnimationComplete;
+
+  const FancyAnimatedCounter({
+    super.key,
+    required this.value,
+    this.style,
+    this.duration = const Duration(milliseconds: 1000),
+    this.prefix,
+    this.suffix,
+    this.highlightColor,
+    this.showPlusAnimation = false,
+    this.onAnimationComplete,
+  });
+
+  @override
+  State<FancyAnimatedCounter> createState() => _FancyAnimatedCounterState();
+}
+
+class _FancyAnimatedCounterState extends State<FancyAnimatedCounter>
+    with TickerProviderStateMixin {
+  late AnimationController _counterController;
+  late AnimationController _scaleController;
+  late AnimationController _glowController;
+  
+  late Animation<double> _counterAnimation;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _glowAnimation;
   
   int _previousValue = 0;
-  int _currentValue = 0;
+  bool _isIncreasing = false;
 
   @override
   void initState() {
     super.initState();
     _setupAnimations();
-    _currentValue = widget.value;
     _previousValue = widget.value;
+    _startAnimation();
+  }
+
+  void _setupAnimations() {
+    _counterController = AnimationController(
+      duration: widget.duration,
+      vsync: this,
+    );
+
+    _scaleController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+
+    _glowController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+
+    _counterAnimation = Tween<double>(
+      begin: 0,
+      end: widget.value.toDouble(),
+    ).animate(CurvedAnimation(
+      parent: _counterController,
+      curve: Curves.easeOutCubic,
+    ));
+
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.2,
+    ).animate(CurvedAnimation(
+      parent: _scaleController,
+      curve: Curves.elasticOut,
+    ));
+
+    _glowAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _glowController,
+      curve: Curves.easeInOut,
+    ));
+
+    _counterController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        widget.onAnimationComplete?.call();
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(FancyAnimatedCounter oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    if (oldWidget.value != widget.value) {
+      _isIncreasing = widget.value > oldWidget.value;
+      _previousValue = oldWidget.value;
+      
+      _counterAnimation = Tween<double>(
+        begin: _previousValue.toDouble(),
+        end: widget.value.toDouble(),
+      ).animate(CurvedAnimation(
+        parent: _counterController,
+        curve: Curves.easeOutCubic,
+      ));
+      
+      _startAnimation();
+    }
+  }
+
+  void _startAnimation() {
+    _counterController.reset();
+    _counterController.forward();
+    
+    if (_isIncreasing) {
+      _scaleController.forward().then((_) {
+        _scaleController.reverse();
+      });
+      
+      if (widget.highlightColor != null) {
+        _glowController.forward().then((_) {
+          _glowController.reverse();
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _counterController.dispose();
+    _scaleController.dispose();
+    _glowController.dispose();
+    super.dispose();
+  }
+
+  String _formatNumber(double value) {
+    final intValue = value.round();
+    final formatter = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
+    return intValue.toString().replaceAllMapped(
+      formatter,
+      (Match match) => '${match[1]},',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        _counterAnimation,
+        _scaleAnimation,
+        _glowAnimation,
+      ]),
+      builder: (context, child) {
+        final displayValue = _formatNumber(_counterAnimation.value);
+        final text = '${widget.prefix ?? ''}$displayValue${widget.suffix ?? ''}';
+        
+        Widget textWidget = Text(
+          text,
+          style: widget.style,
+        );
+
+        // Apply scale animation
+        textWidget = Transform.scale(
+          scale: _scaleAnimation.value,
+          child: textWidget,
+        );
+
+        // Apply glow effect if highlight color is provided
+        if (widget.highlightColor != null && _glowAnimation.value > 0) {
+          textWidget = Container(
+            decoration: BoxDecoration(
+              boxShadow: [
+                BoxShadow(
+                  color: widget.highlightColor!.withOpacity(_glowAnimation.value * 0.5),
+                  blurRadius: 10 * _glowAnimation.value,
+                  spreadRadius: 2 * _glowAnimation.value,
+                ),
+              ],
+            ),
+            child: textWidget,
+          );
+        }
+
+        return textWidget;
+      },
+    );
+  }
+}
+
+/// Rolling counter animation (like slot machine)
+class RollingCounter extends StatefulWidget {
+  final int value;
+  final TextStyle? style;
+  final Duration duration;
+  final int numberOfDigits;
+  final String? prefix;
+  final String? suffix;
+
+  const RollingCounter({
+    super.key,
+    required this.value,
+    this.style,
+    this.duration = const Duration(milliseconds: 1000),
+    this.numberOfDigits = 6,
+    this.prefix,
+    this.suffix,
+  });
+
+  @override
+  State<RollingCounter> createState() => _RollingCounterState();
+}
+
+class _RollingCounterState extends State<RollingCounter>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late List<Animation<double>> _digitAnimations;
+  int _previousValue = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupAnimations();
+    _previousValue = widget.value;
+    _controller.forward();
   }
 
   void _setupAnimations() {
@@ -79,234 +350,205 @@ class _AnimatedCounterState extends State<AnimatedCounter>
       vsync: this,
     );
 
-    _bounceController = AnimationController(
-      duration: const Duration(milliseconds: 200),
-      vsync: this,
-    );
-
-    _animation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: widget.curve,
-    ));
-
-    _bounceAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.1,
-    ).animate(CurvedAnimation(
-      parent: _bounceController,
-      curve: Curves.elasticOut,
-    ));
+    _digitAnimations = List.generate(widget.numberOfDigits, (index) {
+      final delay = index * 0.1;
+      return Tween<double>(
+        begin: 0,
+        end: 1,
+      ).animate(CurvedAnimation(
+        parent: _controller,
+        curve: Interval(
+          delay,
+          math.min(1.0, delay + 0.8),
+          curve: Curves.easeOutCubic,
+        ),
+      ));
+    });
   }
 
   @override
-  void didUpdateWidget(AnimatedCounter oldWidget) {
+  void didUpdateWidget(RollingCounter oldWidget) {
     super.didUpdateWidget(oldWidget);
     
     if (oldWidget.value != widget.value) {
-      _previousValue = _currentValue;
-      _currentValue = widget.value;
-      
+      _previousValue = oldWidget.value;
       _controller.reset();
       _controller.forward();
-      
-      if (widget.enableBounceEffect) {
-        _bounceController.reset();
-        _bounceController.forward().then((_) {
-          _bounceController.reverse();
-        });
-      }
     }
   }
 
   @override
   void dispose() {
     _controller.dispose();
-    _bounceController.dispose();
+    super.dispose();
+  }
+
+  Widget _buildDigit(int digitIndex, String digit, Animation<double> animation) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        final currentDigit = (int.tryParse(digit) ?? 0);
+        final targetDigit = currentDigit;
+        final animatedDigit = (currentDigit * animation.value).round();
+        
+        return ClipRect(
+          child: Transform.translate(
+            offset: Offset(0, -20 * (1 - animation.value)),
+            child: Opacity(
+              opacity: animation.value,
+              child: Text(
+                animatedDigit.toString(),
+                style: widget.style,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final valueString = widget.value.toString().padLeft(widget.numberOfDigits, '0');
+    final digits = valueString.split('');
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (widget.prefix != null)
+          Text(widget.prefix!, style: widget.style),
+        ...digits.asMap().entries.map((entry) {
+          final index = entry.key;
+          final digit = entry.value;
+          return _buildDigit(index, digit, _digitAnimations[index]);
+        }),
+        if (widget.suffix != null)
+          Text(widget.suffix!, style: widget.style),
+      ],
+    );
+  }
+}
+
+/// Speedometer-style counter
+class SpeedometerCounter extends StatefulWidget {
+  final double value;
+  final double maxValue;
+  final TextStyle? style;
+  final Color? progressColor;
+  final Color? backgroundColor;
+  final double size;
+  final Duration duration;
+
+  const SpeedometerCounter({
+    super.key,
+    required this.value,
+    required this.maxValue,
+    this.style,
+    this.progressColor,
+    this.backgroundColor,
+    this.size = 100.0,
+    this.duration = const Duration(milliseconds: 800),
+  });
+
+  @override
+  State<SpeedometerCounter> createState() => _SpeedometerCounterState();
+}
+
+class _SpeedometerCounterState extends State<SpeedometerCounter>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    
+    _controller = AnimationController(
+      duration: widget.duration,
+      vsync: this,
+    );
+
+    _animation = Tween<double>(
+      begin: 0,
+      end: widget.value / widget.maxValue,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    ));
+
+    _controller.forward();
+  }
+
+  @override
+  void didUpdateWidget(SpeedometerCounter oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    if (oldWidget.value != widget.value) {
+      _animation = Tween<double>(
+        begin: oldWidget.value / widget.maxValue,
+        end: widget.value / widget.maxValue,
+      ).animate(CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOutCubic,
+      ));
+      
+      _controller.reset();
+      _controller.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: Listenable.merge([_animation, _bounceAnimation]),
-      builder: (context, child) {
-        return Transform.scale(
-          scale: widget.enableBounceEffect ? _bounceAnimation.value : 1.0,
-          child: widget.animateDigitsIndividually
-              ? _buildDigitAnimatedCounter()
-              : _buildSimpleAnimatedCounter(),
-        );
-      },
-    );
-  }
-
-  Widget _buildSimpleAnimatedCounter() {
-    final currentDisplayValue = (_previousValue + 
-        (_currentValue - _previousValue) * _animation.value).round();
-    
-    return Text(
-      '${widget.prefix}${_formatNumber(currentDisplayValue)}${widget.suffix}',
-      style: widget.style,
-      textAlign: widget.textAlign,
-    );
-  }
-
-  Widget _buildDigitAnimatedCounter() {
-    final formattedPrevious = _formatNumber(_previousValue);
-    final formattedCurrent = _formatNumber(_currentValue);
-    final maxLength = math.max(formattedPrevious.length, formattedCurrent.length);
-    
-    // Pad both strings to same length
-    final paddedPrevious = formattedPrevious.padLeft(maxLength, ' ');
-    final paddedCurrent = formattedCurrent.padLeft(maxLength, ' ');
-    
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      textDirection: TextDirection.ltr,
-      children: [
-        if (widget.prefix.isNotEmpty)
-          Text(
-            widget.prefix,
-            style: widget.style,
+    return SizedBox(
+      width: widget.size,
+      height: widget.size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Background circle
+          CustomPaint(
+            size: Size(widget.size, widget.size),
+            painter: SpeedometerPainter(
+              progress: 1.0,
+              color: widget.backgroundColor ?? Colors.grey.withOpacity(0.3),
+              strokeWidth: 8,
+            ),
           ),
-        ...List.generate(maxLength, (index) {
-          return _buildAnimatedDigit(
-            paddedPrevious[index],
-            paddedCurrent[index],
-            index,
-          );
-        }),
-        if (widget.suffix.isNotEmpty)
-          Text(
-            widget.suffix,
-            style: widget.style,
-          ),
-      ],
-    );
-  }
-
-  Widget _buildAnimatedDigit(String previousChar, String currentChar, int index) {
-    if (previousChar == currentChar) {
-      return Text(
-        currentChar,
-        style: widget.style,
-      );
-    }
-
-    // Animate between different characters
-    return AnimatedBuilder(
-      animation: _animation,
-      builder: (context, child) {
-        final progress = _animation.value;
-        
-        // Calculate vertical offset for sliding effect
-        final offset = (1.0 - progress) * 30.0;
-        
-        return SizedBox(
-          height: (widget.style?.fontSize ?? 14) * 1.2,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              // Previous character sliding up and fading out
-              Transform.translate(
-                offset: Offset(0, -offset),
-                child: Opacity(
-                  opacity: 1.0 - progress,
-                  child: Text(
-                    previousChar,
-                    style: widget.style,
-                  ),
+          
+          // Progress arc
+          AnimatedBuilder(
+            animation: _animation,
+            builder: (context, child) {
+              return CustomPaint(
+                size: Size(widget.size, widget.size),
+                painter: SpeedometerPainter(
+                  progress: _animation.value,
+                  color: widget.progressColor ?? Colors.blue,
+                  strokeWidth: 8,
                 ),
-              ),
-              // Current character sliding in from bottom
-              Transform.translate(
-                offset: Offset(0, 30.0 - offset),
-                child: Opacity(
-                  opacity: progress,
-                  child: Text(
-                    currentChar,
-                    style: widget.style,
-                  ),
-                ),
-              ),
-            ],
+              );
+            },
           ),
-        );
-      },
-    );
-  }
-
-  String _formatNumber(int number) {
-    if (widget.useCompactFormat) {
-      return _formatCompactNumber(number);
-    }
-    
-    if (widget.useCommaFormat) {
-      return _formatWithCommas(number);
-    }
-    
-    return number.toString();
-  }
-
-  String _formatCompactNumber(int number) {
-    if (number.abs() >= 1000000000) {
-      return '${(number / 1000000000).toStringAsFixed(1)}B';
-    } else if (number.abs() >= 1000000) {
-      return '${(number / 1000000).toStringAsFixed(1)}M';
-    } else if (number.abs() >= 1000) {
-      return '${(number / 1000).toStringAsFixed(1)}K';
-    } else {
-      return number.toString();
-    }
-  }
-
-  String _formatWithCommas(int number) {
-    return number.toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match match) => '${match[1]},',
-    );
-  }
-}
-
-/// A specialized animated counter for scores with built-in styling
-class ScoreCounter extends StatelessWidget {
-  final int score;
-  final Color? color;
-  final double? fontSize;
-  final FontWeight? fontWeight;
-  final Duration duration;
-  final bool showPlusSign;
-
-  const ScoreCounter({
-    super.key,
-    required this.score,
-    this.color,
-    this.fontSize,
-    this.fontWeight,
-    this.duration = const Duration(milliseconds: 1000),
-    this.showPlusSign = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedCounter(
-      value: score,
-      duration: duration,
-      prefix: showPlusSign && score > 0 ? '+' : '',
-      useCommaFormat: true,
-      style: TextStyle(
-        color: color ?? Colors.white,
-        fontSize: fontSize ?? 24,
-        fontWeight: fontWeight ?? FontWeight.bold,
-        letterSpacing: 1.2,
-        shadows: [
-          Shadow(
-            offset: const Offset(1, 1),
-            blurRadius: 3,
-            color: Colors.black.withOpacity(0.5),
+          
+          // Center text
+          AnimatedBuilder(
+            animation: _animation,
+            builder: (context, child) {
+              final displayValue = (widget.value * _animation.value).round();
+              return Text(
+                displayValue.toString(),
+                style: widget.style ?? const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -314,96 +556,42 @@ class ScoreCounter extends StatelessWidget {
   }
 }
 
-/// A specialized animated counter for coins with coin icon
-class CoinCounter extends StatelessWidget {
-  final int coins;
-  final Color? color;
-  final double? fontSize;
-  final Duration duration;
-  final bool showIcon;
+class SpeedometerPainter extends CustomPainter {
+  final double progress;
+  final Color color;
+  final double strokeWidth;
 
-  const CoinCounter({
-    super.key,
-    required this.coins,
-    this.color,
-    this.fontSize,
-    this.duration = const Duration(milliseconds: 800),
-    this.showIcon = true,
+  SpeedometerPainter({
+    required this.progress,
+    required this.color,
+    required this.strokeWidth,
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (showIcon) ...[
-          Icon(
-            Icons.monetization_on_rounded,
-            color: color ?? Colors.amber,
-            size: fontSize ?? 20,
-          ),
-          const SizedBox(width: 4),
-        ],
-        AnimatedCounter(
-          value: coins,
-          duration: duration,
-          useCommaFormat: true,
-          style: TextStyle(
-            color: color ?? Colors.amber,
-            fontSize: fontSize ?? 16,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - strokeWidth) / 2;
+
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    const startAngle = -math.pi / 2;
+    final sweepAngle = 2 * math.pi * progress;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      sweepAngle,
+      false,
+      paint,
     );
   }
-}
-
-/// A specialized animated counter for timers (formats as MM:SS)
-class TimerCounter extends StatelessWidget {
-  final int totalSeconds;
-  final Color? color;
-  final double? fontSize;
-  final Duration duration;
-
-  const TimerCounter({
-    super.key,
-    required this.totalSeconds,
-    this.color,
-    this.fontSize,
-    this.duration = const Duration(milliseconds: 500),
-  });
 
   @override
-  Widget build(BuildContext context) {
-    final minutes = totalSeconds ~/ 60;
-    final seconds = totalSeconds % 60;
-    
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AnimatedCounter(
-          value: minutes,
-          duration: duration,
-          suffix: ':',
-          style: TextStyle(
-            color: color ?? Colors.white,
-            fontSize: fontSize ?? 18,
-            fontWeight: FontWeight.bold,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-        AnimatedCounter(
-          value: seconds,
-          duration: duration,
-          style: TextStyle(
-            color: color ?? Colors.white,
-            fontSize: fontSize ?? 18,
-            fontWeight: FontWeight.bold,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-      ],
-    );
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    return oldDelegate != this;
   }
 }

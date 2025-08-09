@@ -1,16 +1,11 @@
-// File: lib/presentation/pages/splash_page.dart
-
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:puzzle_box/core/state/ui_state.dart';
-import 'package:puzzle_box/domain/repositories/asset_repository_dart.dart';
-import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
 import '../widgets/common/animated_counter.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/colors.dart';
-import '../../injection_container.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -35,7 +30,7 @@ class _SplashPageState extends State<SplashPage>
   bool _assetsLoaded = false;
   double _loadingProgress = 0.0;
   String _loadingStatus = 'Initializing...';
-  List<String> _loadingSteps = [];
+  final List<String> _loadingSteps = [];
 
   @override
   void initState() {
@@ -44,10 +39,18 @@ class _SplashPageState extends State<SplashPage>
     _startLoadingSequence();
   }
 
+  @override
+  void dispose() {
+    _logoController.dispose();
+    _particleController.dispose();
+    _progressController.dispose();
+    super.dispose();
+  }
+
   void _initializeAnimations() {
     // Logo animation controller
     _logoController = AnimationController(
-      duration: AppConstants.longAnimationDuration,
+      duration: const Duration(seconds: 2),
       vsync: this,
     );
 
@@ -59,11 +62,11 @@ class _SplashPageState extends State<SplashPage>
 
     // Progress animation controller
     _progressController = AnimationController(
-      duration: AppConstants.mediumAnimationDuration,
+      duration: const Duration(milliseconds: 800),
       vsync: this,
     );
 
-    // Logo animations
+    // Create animations
     _logoScale = Tween<double>(
       begin: 0.0,
       end: 1.0,
@@ -73,31 +76,29 @@ class _SplashPageState extends State<SplashPage>
     ));
 
     _logoRotation = Tween<double>(
-      begin: -0.1,
-      end: 0.0,
+      begin: 0.0,
+      end: 0.1,
     ).animate(CurvedAnimation(
       parent: _logoController,
-      curve: Curves.easeOut,
+      curve: Curves.easeInOut,
     ));
 
     _logoSlide = Tween<Offset>(
-      begin: const Offset(0, -0.3),
+      begin: const Offset(0, 0.5),
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _logoController,
-      curve: Curves.elasticOut,
+      curve: Curves.easeOutCubic,
     ));
 
-    // Particle animation
     _particleOpacity = Tween<double>(
       begin: 0.0,
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _particleController,
-      curve: Curves.easeInOut,
+      curve: Curves.easeIn,
     ));
 
-    // Progress animation
     _progressValue = Tween<double>(
       begin: 0.0,
       end: 1.0,
@@ -105,184 +106,86 @@ class _SplashPageState extends State<SplashPage>
       parent: _progressController,
       curve: Curves.easeInOut,
     ));
+  }
 
-    // Start animations
+  void _startLoadingSequence() async {
+    // Start logo animation
     _logoController.forward();
-    _particleController.repeat(reverse: true);
-  }
-
-  Future<void> _startLoadingSequence() async {
-    try {
-      await _loadAssets();
-      await _initializeServices();
-      await _loadPlayerData();
-      await _finishLoading();
-    } catch (e) {
-      _handleLoadingError(e);
-    }
-  }
-
-  Future<void> _loadAssets() async {
-    _updateLoadingStatus('Loading game assets...', 0.1);
     
-    try {
-      final assetRepository = getIt<AssetRepository>();
-      
-      final result = await assetRepository.preloadEssentialAssets(
-        onProgress: (progress) {
-          setState(() {
-            _loadingProgress = 0.1 + (progress * 0.4); // 10% to 50%
-          });
-          _progressController.animateTo(_loadingProgress);
-        },
-      );
-
-      _loadingSteps.add('✓ Assets loaded: ${result.loadedAssets}/${result.totalAssets}');
-      
-      if (!result.isSuccess) {
-        _loadingSteps.add('⚠ Some assets failed to load');
-      }
-
-      _updateLoadingStatus('Assets loaded successfully', 0.5);
-      
-    } catch (e) {
-      _loadingSteps.add('✗ Asset loading failed: $e');
-      _updateLoadingStatus('Asset loading failed', 0.5);
-      rethrow;
-    }
-  }
-
-  Future<void> _initializeServices() async {
-    _updateLoadingStatus('Initializing services...', 0.6);
-    
-    try {
-      // Initialize audio service
-      _loadingSteps.add('• Initializing audio...');
-      await Future.delayed(const Duration(milliseconds: 300));
-      _loadingSteps.add('✓ Audio service ready');
-
-      // Initialize analytics
-      _loadingSteps.add('• Setting up analytics...');
-      await Future.delayed(const Duration(milliseconds: 200));
-      _loadingSteps.add('✓ Analytics initialized');
-
-      // Initialize storage
-      _loadingSteps.add('• Preparing storage...');
-      await Future.delayed(const Duration(milliseconds: 250));
-      _loadingSteps.add('✓ Storage ready');
-
-      _updateLoadingStatus('Services initialized', 0.75);
-      
-    } catch (e) {
-      _loadingSteps.add('✗ Service initialization failed: $e');
-      _updateLoadingStatus('Service initialization failed', 0.75);
-      rethrow;
-    }
-  }
-
-  Future<void> _loadPlayerData() async {
-    _updateLoadingStatus('Loading player data...', 0.8);
-    
-    try {
-      // Initialize player cubit
-      final playerCubit = context.read<PlayerCubit>();
-      await playerCubit.initializePlayer();
-      
-      _loadingSteps.add('✓ Player data loaded');
-      _updateLoadingStatus('Player data ready', 0.9);
-      
-    } catch (e) {
-      _loadingSteps.add('⚠ Using default player data');
-      _updateLoadingStatus('Using default settings', 0.9);
-      // Don't rethrow - we can continue with defaults
-    }
-  }
-
-  Future<void> _finishLoading() async {
-    _updateLoadingStatus('Ready to play!', 1.0);
-    _loadingSteps.add('🎮 Game ready!');
-    
-    setState(() {
-      _assetsLoaded = true;
-    });
-
-    // Wait a moment to show completion
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    if (mounted) {
-      context.read<UICubit>().navigateToPage(AppPage.mainMenu);
-    }
-  }
-
-  void _updateLoadingStatus(String status, double progress) {
-    if (mounted) {
-      setState(() {
-        _loadingStatus = status;
-        _loadingProgress = progress;
-      });
-      _progressController.animateTo(progress);
-    }
-  }
-
-  void _handleLoadingError(dynamic error) {
-    setState(() {
-      _loadingStatus = 'Loading failed';
-      _loadingSteps.add('✗ Critical error: $error');
-    });
-
-    // Show error dialog after a delay
-    Future.delayed(const Duration(seconds: 1), () {
+    // Start particle animation after a delay
+    Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
-        _showErrorDialog(error.toString());
+        _particleController.forward();
       }
     });
+
+    // Initialize app components
+    await _initializeApp();
   }
 
-  void _showErrorDialog(String error) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.error_outline, color: AppColors.error),
-            SizedBox(width: 8),
-            Text('Loading Error'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Failed to initialize the game:'),
-            const SizedBox(height: 8),
-            Text(
-              error,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _startLoadingSequence(); // Retry
-            },
-            child: const Text('Retry'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              context.read<UICubit>().navigateToPage(AppPage.mainMenu);
-            },
-            child: const Text('Continue Anyway'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _initializeApp() async {
+    try {
+      // Step 1: Initialize dependency injection
+      await _updateProgress(0.1, 'Setting up dependencies...');
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      // Step 2: Initialize storage
+      await _updateProgress(0.3, 'Loading player data...');
+      await Future.delayed(const Duration(milliseconds: 400));
+      
+      // Step 3: Initialize audio
+      await _updateProgress(0.5, 'Preparing audio system...');
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      // Step 4: Load game assets
+      await _updateProgress(0.7, 'Loading game assets...');
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Step 5: Initialize game engine
+      await _updateProgress(0.9, 'Starting game engine...');
+      await Future.delayed(const Duration(milliseconds: 400));
+      
+      // Step 6: Complete initialization
+      await _updateProgress(1.0, 'Ready to play!');
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      _assetsLoaded = true;
+      
+      // Navigate to main menu after successful loading
+      if (mounted) {
+        context.read<UICubit>().navigateToPage(AppPage.mainMenu);
+      }
+      
+    } catch (e) {
+      debugPrint('❌ Failed to initialize app: $e');
+      await _updateProgress(0.0, 'Failed to load. Retrying...');
+      
+      // Retry after a delay
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          _startLoadingSequence();
+        }
+      });
+    }
+  }
+
+  Future<void> _updateProgress(double progress, String status) async {
+    if (!mounted) return;
+    
+    setState(() {
+      _loadingProgress = progress;
+      _loadingStatus = status;
+      _loadingSteps.add(status);
+      
+      // Keep only the last 3 steps
+      if (_loadingSteps.length > 3) {
+        _loadingSteps.removeAt(0);
+      }
+    });
+    
+    // Animate progress bar
+    _progressController.reset();
+    _progressController.forward();
   }
 
   @override
@@ -293,83 +196,62 @@ class _SplashPageState extends State<SplashPage>
           body: Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
                 colors: [
-                  AppColors.primaryBlue,
-                  AppColors.primaryPurple,
-                  AppColors.primaryPink,
+                  AppColors.darkBackground,
+                  AppColors.darkSurface,
+                  AppColors.darkSurfaceVariant,
                 ],
-                stops: [0.0, 0.5, 1.0],
               ),
             ),
             child: SafeArea(
-              child: Column(
+              child: Stack(
                 children: [
-                  // Header spacing
-                  const Spacer(flex: 2),
+                  // Background particles
+                  _buildBackgroundParticles(),
                   
-                  // Logo section
-                  Expanded(
-                    flex: 4,
-                    child: Center(
-                      child: AnimatedBuilder(
-                        animation: Listenable.merge([
-                          _logoController,
-                          _particleController,
-                        ]),
-                        builder: (context, child) {
-                          return Stack(
-                            alignment: Alignment.center,
+                  // Main content
+                  Column(
+                    children: [
+                      // Logo section
+                      Expanded(
+                        flex: 4,
+                        child: Center(
+                          child: _buildLogo(),
+                        ),
+                      ),
+                      
+                      // Loading section
+                      Expanded(
+                        flex: 3,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32),
+                          child: Column(
                             children: [
-                              // Background particles
-                              ..._buildParticles(),
+                              // Loading progress
+                              _buildLoadingProgress(),
                               
-                              // Main logo
-                              SlideTransition(
-                                position: _logoSlide,
-                                child: RotationTransition(
-                                  turns: _logoRotation,
-                                  child: ScaleTransition(
-                                    scale: _logoScale,
-                                    child: _buildLogo(),
-                                  ),
-                                ),
-                              ),
+                              const SizedBox(height: 24),
+                              
+                              // Loading status
+                              _buildLoadingStatus(),
+                              
+                              const SizedBox(height: 16),
+                              
+                              // Loading steps (debug info)
+                              if (uiState.showDebugInfo) _buildLoadingSteps(),
                             ],
-                          );
-                        },
+                          ),
+                        ),
                       ),
-                    ),
+                      
+                      // Footer
+                      const Spacer(flex: 1),
+                      _buildFooter(),
+                      const SizedBox(height: 32),
+                    ],
                   ),
-                  
-                  // Loading section
-                  Expanded(
-                    flex: 3,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 32),
-                      child: Column(
-                        children: [
-                          // Loading progress
-                          _buildLoadingProgress(),
-                          
-                          const SizedBox(height: 24),
-                          
-                          // Loading status
-                          _buildLoadingStatus(),
-                          
-                          const SizedBox(height: 16),
-                          
-                          // Loading steps (debug info)
-                          if (uiState.showDebugInfo)
-                            _buildLoadingSteps(),
-                        ],
-                      ),
-                    ),
-                  ),
-                  
-                  // Footer spacing
-                  const Spacer(flex: 1),
                 ],
               ),
             ),
@@ -379,87 +261,142 @@ class _SplashPageState extends State<SplashPage>
     );
   }
 
-  Widget _buildLogo() {
-    return Container(
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(32),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.2),
-          width: 2,
+  Widget _buildBackgroundParticles() {
+    return AnimatedBuilder(
+      animation: _particleOpacity,
+      builder: (context, child) {
+        return Opacity(
+          opacity: _particleOpacity.value,
+          child: Stack(
+            children: List.generate(15, (index) {
+              return _buildParticle(index);
+            }),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildParticle(int index) {
+    final screenSize = MediaQuery.of(context).size;
+    final random = index * 97; // Pseudo-random based on index
+    
+    final x = ((random * 7) % 100) / 100 * screenSize.width;
+    final y = ((random * 11) % 100) / 100 * screenSize.height;
+    final size = 4.0 + ((random * 13) % 8);
+    final color = AppColors.particleColors[index % AppColors.particleColors.length];
+    
+    return Positioned(
+      left: x,
+      top: y,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.6),
+          borderRadius: BorderRadius.circular(size / 2),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.3),
+              blurRadius: 4,
+              spreadRadius: 1,
+            ),
+          ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // App icon/logo would go here
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [
-                  AppColors.primaryYellow,
-                  AppColors.primaryOrange,
-                ],
+    );
+  }
+
+  Widget _buildLogo() {
+    return AnimatedBuilder(
+      animation: Listenable.merge([_logoScale, _logoSlide, _logoRotation]),
+      builder: (context, child) {
+        return SlideTransition(
+          position: _logoSlide,
+          child: Transform.scale(
+            scale: _logoScale.value,
+            child: Transform.rotate(
+              angle: _logoRotation.value,
+              child: Container(
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(32),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.2),
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // App icon/logo
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            AppColors.primary,
+                            AppColors.secondary,
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primary.withOpacity(0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.extension_rounded,
+                        color: Colors.white,
+                        size: 40,
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 16),
+                    
+                    // App name
+                    const Text(
+                      AppConstants.appName,
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 8),
+                    
+                    // Tagline
+                    Text(
+                      'Puzzle Your Way to Victory',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white.withOpacity(0.7),
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryYellow.withOpacity(0.3),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.grid_3x3,
-              size: 64,
-              color: Colors.white,
             ),
           ),
-          
-          const SizedBox(height: 24),
-          
-          // App name
-          const Text(
-            'Box Hooks',
-            style: TextStyle(
-              fontSize: 36,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              letterSpacing: 2,
-              shadows: [
-                Shadow(
-                  offset: Offset(2, 2),
-                  blurRadius: 4,
-                  color: Colors.black26,
-                ),
-              ],
-            ),
-          ),
-          
-          const SizedBox(height: 8),
-          
-          // Tagline
-          Text(
-            'A Colorful Puzzle Adventure',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.white.withOpacity(0.8),
-              letterSpacing: 1,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -467,28 +404,50 @@ class _SplashPageState extends State<SplashPage>
     return Column(
       children: [
         // Progress bar
-        AnimatedBuilder(
-          animation: _progressController,
-          builder: (context, child) {
-            return LinearProgressIndicator(
-              value: _progressValue.value,
-              backgroundColor: Colors.white.withOpacity(0.2),
-              valueColor: AlwaysStoppedAnimation<Color>(
-                _assetsLoaded ? AppColors.success : AppColors.primaryYellow,
-              ),
-              minHeight: 8,
-            );
-          },
+        Container(
+          width: double.infinity,
+          height: 6,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(3),
+          ),
+          child: AnimatedBuilder(
+            animation: _progressValue,
+            builder: (context, child) {
+              return FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: _loadingProgress * _progressValue.value,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [
+                        AppColors.primary,
+                        AppColors.secondary,
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(3),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withOpacity(0.5),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
         ),
         
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         
         // Progress percentage
         AnimatedCounter(
           value: (_loadingProgress * 100).round(),
           suffix: '%',
           style: const TextStyle(
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.bold,
             color: Colors.white,
           ),
@@ -499,13 +458,13 @@ class _SplashPageState extends State<SplashPage>
 
   Widget _buildLoadingStatus() {
     return AnimatedSwitcher(
-      duration: AppConstants.shortAnimationDuration,
+      duration: const Duration(milliseconds: 300),
       child: Text(
         _loadingStatus,
         key: ValueKey(_loadingStatus),
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 16,
-          color: Colors.white.withOpacity(0.9),
+          color: Colors.white70,
           fontWeight: FontWeight.w500,
         ),
         textAlign: TextAlign.center,
@@ -514,90 +473,74 @@ class _SplashPageState extends State<SplashPage>
   }
 
   Widget _buildLoadingSteps() {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.3),
-          borderRadius: BorderRadius.circular(12),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.1),
+          width: 1,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Loading Steps:',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Loading Steps:',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.white70,
             ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: ListView.builder(
-                itemCount: _loadingSteps.length,
-                itemBuilder: (context, index) {
-                  final step = _loadingSteps[index];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Text(
-                      step,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withOpacity(0.8),
-                        fontFamily: 'monospace',
-                      ),
+          ),
+          const SizedBox(height: 8),
+          ..._loadingSteps.map((step) => Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.check_circle_outline,
+                  size: 16,
+                  color: AppColors.success,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    step,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.white60,
                     ),
-                  );
-                },
-              ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          )),
+        ],
       ),
     );
   }
 
-  List<Widget> _buildParticles() {
-    return List.generate(12, (index) {
-      final random = (index * 137) % 100 / 100.0;
-      final size = 4.0 + (index % 4) * 2;
-      final color = [
-        AppColors.primaryYellow,
-        AppColors.primaryOrange,
-        AppColors.primaryPink,
-        AppColors.primaryBlue,
-      ][index % 4];
-
-      return Positioned(
-        left: 300 * random,
-        top: 300 * random + _particleOpacity.value * 20,
-        child: Opacity(
-          opacity: _particleOpacity.value * 0.6,
-          child: Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(size / 2),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withOpacity(0.3),
-                  blurRadius: 4,
-                ),
-              ],
-            ),
+  Widget _buildFooter() {
+    return Column(
+      children: [
+        Text(
+          'Version ${AppConstants.appVersion}',
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.white.withOpacity(0.5),
           ),
         ),
-      );
-    });
-  }
-
-  @override
-  void dispose() {
-    _logoController.dispose();
-    _particleController.dispose();
-    _progressController.dispose();
-    super.dispose();
+        const SizedBox(height: 8),
+        Text(
+          '© ${DateTime.now().year} ${AppConstants.developerName}',
+          style: TextStyle(
+            fontSize: 10,
+            color: Colors.white.withOpacity(0.3),
+          ),
+        ),
+      ],
+    );
   }
 }

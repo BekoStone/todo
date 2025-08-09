@@ -2,344 +2,376 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
 
-/// Responsive utility class providing consistent scaling and layout calculations
-/// across different device sizes and orientations.
-/// Uses static methods for optimal performance and memory usage.
+/// Responsive utility class for handling different screen sizes and orientations.
+/// Provides consistent sizing, spacing, and layout calculations across devices.
+/// Optimized for puzzle game UI with focus on mobile-first design.
 class ResponsiveUtils {
   // Private constructor to prevent instantiation
   ResponsiveUtils._();
-  
-  // Cache for performance optimization
-  static MediaQueryData? _cachedMediaQuery;
-  static Size? _cachedScreenSize;
-  static DeviceType? _cachedDeviceType;
-  static GameConfig? _cachedGameConfig;
 
-  /// Initialize responsive utils with context (call once during app startup)
+  // Cached values for performance optimization
+  static Size? _screenSize;
+  static MediaQueryData? _mediaQueryData;
+  static double? _scaleFactor;
+  static DeviceType? _deviceType;
+  static bool _isInitialized = false;
+
+  // Base design dimensions (iPhone 12 Pro as reference)
+  static const double _baseWidth = 390.0;
+  static const double _baseHeight = 844.0;
+  static const double _baseDensity = 3.0;
+
+  /// Initialize responsive utilities with MediaQuery data
   static void initialize(BuildContext context) {
-    _cachedMediaQuery = MediaQuery.of(context);
-    _updateCache();
+    final mediaQuery = MediaQuery.of(context);
+    _mediaQueryData = mediaQuery;
+    _screenSize = mediaQuery.size;
+    _scaleFactor = _calculateScaleFactor();
+    _deviceType = _determineDeviceType();
+    _isInitialized = true;
   }
 
-  /// Update cached values when screen changes
-  static void _updateCache() {
-    if (_cachedMediaQuery == null) return;
+  /// Ensure initialization before use
+  static void _ensureInitialized() {
+    if (!_isInitialized) {
+      throw StateError('ResponsiveUtils not initialized. Call initialize(context) first.');
+    }
+  }
+
+  // ========================================
+  // DIMENSION CALCULATIONS
+  // ========================================
+
+  /// Get screen width
+  static double get screenWidth {
+    _ensureInitialized();
+    return _screenSize!.width;
+  }
+
+  /// Get screen height
+  static double get screenHeight {
+    _ensureInitialized();
+    return _screenSize!.height;
+  }
+
+  /// Get device pixel ratio
+  static double get pixelRatio {
+    _ensureInitialized();
+    return _mediaQueryData!.devicePixelRatio;
+  }
+
+  /// Get text scale factor
+  static double get textScaleFactor {
+    _ensureInitialized();
+    return _mediaQueryData!.textScaleFactor.clamp(0.8, 1.3);
+  }
+
+  /// Get status bar height
+  static double get statusBarHeight {
+    _ensureInitialized();
+    return _mediaQueryData!.padding.top;
+  }
+
+  /// Get bottom safe area height
+  static double get bottomSafeArea {
+    _ensureInitialized();
+    return _mediaQueryData!.padding.bottom;
+  }
+
+  /// Get keyboard height
+  static double get keyboardHeight {
+    _ensureInitialized();
+    return _mediaQueryData!.viewInsets.bottom;
+  }
+
+  // ========================================
+  // RESPONSIVE SIZING
+  // ========================================
+
+  /// Width percentage of screen
+  static double wp(double percentage) {
+    _ensureInitialized();
+    return (screenWidth * percentage) / 100;
+  }
+
+  /// Height percentage of screen
+  static double hp(double percentage) {
+    _ensureInitialized();
+    return (screenHeight * percentage) / 100;
+  }
+
+  /// Responsive width based on design width
+  static double rw(double designWidth) {
+    _ensureInitialized();
+    return (designWidth / _baseWidth) * screenWidth;
+  }
+
+  /// Responsive height based on design height
+  static double rh(double designHeight) {
+    _ensureInitialized();
+    return (designHeight / _baseHeight) * screenHeight;
+  }
+
+  /// Responsive font size with automatic scaling
+  static double sp(double fontSize) {
+    _ensureInitialized();
+    final scaledSize = (fontSize / _baseWidth) * screenWidth;
+    final textScaled = scaledSize * textScaleFactor;
     
-    _cachedScreenSize = _cachedMediaQuery!.size;
-    _cachedDeviceType = _calculateDeviceType(_cachedScreenSize!);
-    _cachedGameConfig = _calculateGameConfig(_cachedScreenSize!);
+    // Apply device-specific adjustments
+    double adjustmentFactor = 1.0;
+    switch (_deviceType!) {
+      case DeviceType.mobile:
+        adjustmentFactor = 1.0;
+        break;
+      case DeviceType.tablet:
+        adjustmentFactor = 0.9; // Slightly smaller on tablets
+        break;
+      case DeviceType.desktop:
+        adjustmentFactor = 0.8; // Smaller on desktop
+        break;
+    }
+    
+    return textScaled * adjustmentFactor;
   }
 
-  /// Force refresh cache (call when orientation changes)
-  static void refresh(BuildContext context) {
-    _cachedMediaQuery = MediaQuery.of(context);
-    _updateCache();
+  /// Responsive radius
+  static double radius(double designRadius) {
+    _ensureInitialized();
+    return (designRadius * _scaleFactor!).clamp(2.0, 30.0);
+  }
+
+  /// Responsive border width
+  static double borderWidth(double designWidth) {
+    _ensureInitialized();
+    return (designWidth * _scaleFactor!).clamp(0.5, 4.0);
   }
 
   // ========================================
   // DEVICE TYPE DETECTION
   // ========================================
 
-  /// Get current device type
-  static DeviceType getDeviceType(BuildContext context) {
-    _cachedMediaQuery ??= MediaQuery.of(context);
-    return _cachedDeviceType ?? _calculateDeviceType(_cachedMediaQuery!.size);
+  /// Check if device is mobile
+  static bool isMobile(BuildContext? context) {
+    if (context != null && !_isInitialized) {
+      initialize(context);
+    }
+    _ensureInitialized();
+    return _deviceType == DeviceType.mobile;
   }
 
-  /// Calculate device type based on screen size
-  static DeviceType _calculateDeviceType(Size screenSize) {
-    final width = screenSize.width;
-    final height = screenSize.height;
-    final diagonal = math.sqrt(width * width + height * height);
+  /// Check if device is tablet
+  static bool isTablet(BuildContext? context) {
+    if (context != null && !_isInitialized) {
+      initialize(context);
+    }
+    _ensureInitialized();
+    return _deviceType == DeviceType.tablet;
+  }
+
+  /// Check if device is desktop
+  static bool isDesktop(BuildContext? context) {
+    if (context != null && !_isInitialized) {
+      initialize(context);
+    }
+    _ensureInitialized();
+    return _deviceType == DeviceType.desktop;
+  }
+
+  /// Check if screen is in landscape mode
+  static bool isLandscape() {
+    _ensureInitialized();
+    return screenWidth > screenHeight;
+  }
+
+  /// Check if screen is in portrait mode
+  static bool isPortrait() {
+    _ensureInitialized();
+    return screenHeight > screenWidth;
+  }
+
+  // ========================================
+  // GAME-SPECIFIC CONFIGURATIONS
+  // ========================================
+
+  /// Get game configuration based on screen size
+  static GameConfig getGameConfig(Size screenSize) {
+    // Calculate optimal grid size and cell size for the screen
+    final availableWidth = screenSize.width * 0.9; // Leave 10% padding
+    final availableHeight = screenSize.height * 0.6; // Leave space for UI
     
-    // Use diagonal and width for better classification
-    if (width < AppConstants.mobileBreakpoint || diagonal < 700) {
+    final maxDimension = math.min(availableWidth, availableHeight);
+    final gridSize = AppConstants.gridSize;
+    final cellSize = (maxDimension - (gridSize - 1) * AppConstants.cellSpacing) / gridSize;
+    
+    // Ensure minimum cell size for usability
+    final adjustedCellSize = math.max(cellSize, 30.0);
+    final totalGridSize = adjustedCellSize * gridSize + (gridSize - 1) * AppConstants.cellSpacing;
+    
+    // Calculate scale factor for responsive adjustments
+    final scale = _calculateGameScale(screenSize);
+    
+    return GameConfig(
+      gridSize: gridSize,
+      cellSize: adjustedCellSize,
+      gridSpacing: AppConstants.cellSpacing,
+      totalGridSize: totalGridSize,
+      scale: scale,
+    );
+  }
+
+  /// Calculate game-specific scale factor
+  static double _calculateGameScale(Size screenSize) {
+    final baseArea = _baseWidth * _baseHeight;
+    final currentArea = screenSize.width * screenSize.height;
+    final areaRatio = currentArea / baseArea;
+    
+    // Apply logarithmic scaling to prevent extreme scaling
+    return math.pow(areaRatio, 0.3).clamp(0.8, 1.5).toDouble();
+  }
+
+  // ========================================
+  // LAYOUT HELPERS
+  // ========================================
+
+  /// Get optimal padding for current device
+  static EdgeInsets getDefaultPadding() {
+    _ensureInitialized();
+    
+    switch (_deviceType!) {
+      case DeviceType.mobile:
+        return EdgeInsets.all(wp(4));
+      case DeviceType.tablet:
+        return EdgeInsets.all(wp(3));
+      case DeviceType.desktop:
+        return EdgeInsets.all(wp(2));
+    }
+  }
+
+  /// Get optimal margin for current device
+  static EdgeInsets getDefaultMargin() {
+    _ensureInitialized();
+    
+    switch (_deviceType!) {
+      case DeviceType.mobile:
+        return EdgeInsets.all(wp(2));
+      case DeviceType.tablet:
+        return EdgeInsets.all(wp(1.5));
+      case DeviceType.desktop:
+        return EdgeInsets.all(wp(1));
+    }
+  }
+
+  /// Get content max width for better readability
+  static double getContentMaxWidth() {
+    _ensureInitialized();
+    
+    switch (_deviceType!) {
+      case DeviceType.mobile:
+        return screenWidth;
+      case DeviceType.tablet:
+        return math.min(screenWidth * 0.8, 600);
+      case DeviceType.desktop:
+        return math.min(screenWidth * 0.6, 800);
+    }
+  }
+
+  /// Get button height for current device
+  static double getButtonHeight() {
+    _ensureInitialized();
+    return hp(6).clamp(44.0, 60.0); // iOS/Android standards
+  }
+
+  /// Get icon size for current device
+  static double getIconSize(IconSize size) {
+    _ensureInitialized();
+    
+    switch (size) {
+      case IconSize.small:
+        return sp(16);
+      case IconSize.medium:
+        return sp(24);
+      case IconSize.large:
+        return sp(32);
+      case IconSize.extraLarge:
+        return sp(48);
+    }
+  }
+
+  // ========================================
+  // PRIVATE HELPERS
+  // ========================================
+
+  /// Calculate overall scale factor
+  static double _calculateScaleFactor() {
+    final widthRatio = screenWidth / _baseWidth;
+    final heightRatio = screenHeight / _baseHeight;
+    return math.sqrt(widthRatio * heightRatio).clamp(0.8, 2.0);
+  }
+
+  /// Determine device type based on screen size
+  static DeviceType _determineDeviceType() {
+    final diagonal = math.sqrt(
+      math.pow(screenWidth, 2) + math.pow(screenHeight, 2)
+    ) / pixelRatio;
+    
+    if (diagonal < 7) {
       return DeviceType.mobile;
-    } else if (width < AppConstants.tabletBreakpoint || diagonal < 1100) {
+    } else if (diagonal < 13) {
       return DeviceType.tablet;
     } else {
       return DeviceType.desktop;
     }
   }
 
-  /// Check if device is mobile
-  static bool isMobile(BuildContext context) {
-    return getDeviceType(context) == DeviceType.mobile;
-  }
-
-  /// Check if device is tablet
-  static bool isTablet(BuildContext context) {
-    return getDeviceType(context) == DeviceType.tablet;
-  }
-
-  /// Check if device is desktop
-  static bool isDesktop(BuildContext context) {
-    return getDeviceType(context) == DeviceType.desktop;
-  }
-
-  // ========================================
-  // SCREEN DIMENSIONS
-  // ========================================
-
-  /// Get screen width
-  static double getScreenWidth(BuildContext context) {
-    return MediaQuery.of(context).size.width;
-  }
-
-  /// Get screen height
-  static double getScreenHeight(BuildContext context) {
-    return MediaQuery.of(context).size.height;
-  }
-
-  /// Get screen size
-  static Size getScreenSize(BuildContext context) {
-    return MediaQuery.of(context).size;
-  }
-
-  /// Check if device is in landscape mode
-  static bool isLandscape(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    return size.width > size.height;
-  }
-
-  /// Check if device is in portrait mode
-  static bool isPortrait(BuildContext context) {
-    return !isLandscape(context);
-  }
-
-  // ========================================
-  // RESPONSIVE SCALING
-  // ========================================
-
-  /// Scale value based on device type
-  static double scale(BuildContext context, double value) {
-    final deviceType = getDeviceType(context);
-    final scaleFactor = AppConstants.scalingFactors[deviceType.name] ?? 1.0;
-    return value * scaleFactor;
-  }
-
-  /// Scale font size with device type and accessibility settings
-  static double scaleFontSize(BuildContext context, double fontSize) {
-    final mediaQuery = MediaQuery.of(context);
-    final deviceScale = scale(context, 1.0);
-    final accessibilityScale = mediaQuery.textScaler.scale(1.0);
-    
-    // Combine device scaling with accessibility scaling
-    return fontSize * deviceScale * accessibilityScale;
-  }
-
-  /// Get responsive padding based on device type
-  static EdgeInsets getPadding(BuildContext context, {
-    double mobile = AppConstants.defaultPadding,
-    double? tablet,
-    double? desktop,
-  }) {
-    final deviceType = getDeviceType(context);
-    final padding = switch (deviceType) {
-      DeviceType.mobile => mobile,
-      DeviceType.tablet => tablet ?? mobile * 1.2,
-      DeviceType.desktop => desktop ?? tablet ?? mobile * 1.5,
-    };
-    
-    return EdgeInsets.all(padding);
-  }
-
-  /// Get responsive spacing
-  static double getSpacing(BuildContext context, {
-    double mobile = AppConstants.defaultPadding,
-    double? tablet,
-    double? desktop,
-  }) {
-    final deviceType = getDeviceType(context);
-    return switch (deviceType) {
-      DeviceType.mobile => mobile,
-      DeviceType.tablet => tablet ?? mobile * 1.2,
-      DeviceType.desktop => desktop ?? tablet ?? mobile * 1.5,
-    };
-  }
-
-  // ========================================
-  // RESPONSIVE BREAKPOINTS
-  // ========================================
-
-  /// Get responsive breakpoint
-  static ResponsiveBreakpoint getBreakpoint(BuildContext context) {
-    final width = getScreenWidth(context);
-    
-    if (width < AppConstants.mobileBreakpoint) {
-      return ResponsiveBreakpoint.mobile;
-    } else if (width < AppConstants.tabletBreakpoint) {
-      return ResponsiveBreakpoint.tablet;
-    } else {
-      return ResponsiveBreakpoint.desktop;
-    }
-  }
-
-  /// Build responsive widget based on breakpoints
-  static Widget buildResponsiveWidget({
-    required BuildContext context,
-    required Widget mobile,
-    Widget? tablet,
-    Widget? desktop,
-  }) {
-    final breakpoint = getBreakpoint(context);
-    return switch (breakpoint) {
-      ResponsiveBreakpoint.mobile => mobile,
-      ResponsiveBreakpoint.tablet => tablet ?? mobile,
-      ResponsiveBreakpoint.desktop => desktop ?? tablet ?? mobile,
-    };
-  }
-
-  // ========================================
-  // GAME-SPECIFIC CALCULATIONS
-  // ========================================
-
-  /// Get game configuration for current screen size
-  static GameConfig getGameConfig(Size screenSize) {
-    // Use cached config if available and screen size hasn't changed
-    if (_cachedGameConfig != null && _cachedScreenSize == screenSize) {
-      return _cachedGameConfig!;
-    }
-    
-    return _calculateGameConfig(screenSize);
-  }
-
-  /// Calculate game configuration based on screen size
-  static GameConfig _calculateGameConfig(Size screenSize) {
-    final deviceType = _calculateDeviceType(screenSize);
-    final minDimension = math.min(screenSize.width, screenSize.height);
-    
-    // Calculate optimal cell size for the grid
-    final availableSpace = minDimension - (AppConstants.gridPadding * 2);
-    final totalSpacing = (AppConstants.gridSize - 1) * AppConstants.cellSpacing;
-    final cellSize = (availableSpace - totalSpacing) / AppConstants.gridSize;
-    
-    // Ensure minimum cell size for usability
-    final minCellSize = switch (deviceType) {
-      DeviceType.mobile => 32.0,
-      DeviceType.tablet => 40.0,
-      DeviceType.desktop => 48.0,
-    };
-    
-    final finalCellSize = math.max(cellSize, minCellSize);
-    
-    return GameConfig(
-      gridSize: AppConstants.gridSize,
-      cellSize: finalCellSize,
-      deviceType: deviceType,
-      screenSize: screenSize,
-    );
-  }
-
-  /// Get game layout configuration
-  static GameLayout getGameLayout(BuildContext context) {
-    final screenSize = getScreenSize(context);
-    final deviceType = getDeviceType(context);
-    final isLandscapeMode = isLandscape(context);
-    
-    // Calculate layout dimensions
-    final gameConfig = getGameConfig(screenSize);
-    final gridTotalSize = (gameConfig.cellSize * AppConstants.gridSize) + 
-                         ((AppConstants.gridSize - 1) * AppConstants.cellSpacing);
-    
-    // Calculate UI element heights
-    final hudHeight = switch (deviceType) {
-      DeviceType.mobile => 80.0,
-      DeviceType.tablet => 100.0,
-      DeviceType.desktop => 120.0,
-    };
-    
-    final slotsHeight = switch (deviceType) {
-      DeviceType.mobile => 120.0,
-      DeviceType.tablet => 140.0,
-      DeviceType.desktop => 160.0,
-    };
-    
-    final powerUpHeight = switch (deviceType) {
-      DeviceType.mobile => 60.0,
-      DeviceType.tablet => 70.0,
-      DeviceType.desktop => 80.0,
-    };
-    
-    final sideMargin = switch (deviceType) {
-      DeviceType.mobile => 16.0,
-      DeviceType.tablet => 24.0,
-      DeviceType.desktop => 32.0,
-    };
-    
-    return GameLayout(
-      screenSize: screenSize,
-      deviceType: deviceType,
-      gridConfig: gameConfig,
-      hudHeight: hudHeight,
-      slotsHeight: slotsHeight,
-      powerUpHeight: powerUpHeight,
-      sideMargin: sideMargin,
-      isLandscape: isLandscapeMode,
-    );
-  }
-
-  /// Get slot layout configuration
-  static SlotLayout getSlotLayout(BuildContext context, int slotCount) {
-    final screenSize = getScreenSize(context);
-    final deviceType = getDeviceType(context);
-    
-    // Calculate slot size
-    final baseSlotSize = switch (deviceType) {
-      DeviceType.mobile => 80.0,
-      DeviceType.tablet => 100.0,
-      DeviceType.desktop => 120.0,
-    };
-    
-    final spacing = switch (deviceType) {
-      DeviceType.mobile => 12.0,
-      DeviceType.tablet => 16.0,
-      DeviceType.desktop => 20.0,
-    };
-    
-    final totalWidth = (baseSlotSize * slotCount) + (spacing * (slotCount - 1));
-    final centerOffset = (screenSize.width - totalWidth) / 2;
-    
-    return SlotLayout(
-      slotSize: Size(baseSlotSize, baseSlotSize),
-      spacing: spacing,
-      totalWidth: totalWidth,
-      centerOffset: centerOffset,
-    );
-  }
-
   // ========================================
   // UTILITY METHODS
   // ========================================
 
-  /// Get safe area insets
-  static EdgeInsets getSafeAreaInsets(BuildContext context) {
-    return MediaQuery.of(context).padding;
+  /// Get safe area constraints
+  static BoxConstraints getSafeConstraints() {
+    _ensureInitialized();
+    
+    return BoxConstraints(
+      minWidth: 0,
+      maxWidth: screenWidth,
+      minHeight: 0,
+      maxHeight: screenHeight - statusBarHeight - bottomSafeArea,
+    );
   }
 
-  /// Get bottom safe area height
-  static double getBottomSafeArea(BuildContext context) {
-    return MediaQuery.of(context).padding.bottom;
+  /// Check if device has notch or dynamic island
+  static bool hasNotch() {
+    _ensureInitialized();
+    return statusBarHeight > 24; // Standard status bar height
   }
 
-  /// Get top safe area height
-  static double getTopSafeArea(BuildContext context) {
-    return MediaQuery.of(context).padding.top;
+  /// Get optimal grid columns for current screen
+  static int getOptimalColumns(double itemWidth, {double spacing = 16}) {
+    _ensureInitialized();
+    
+    final availableWidth = screenWidth - wp(8); // Account for padding
+    final itemWithSpacing = itemWidth + spacing;
+    final columns = (availableWidth / itemWithSpacing).floor();
+    
+    return math.max(1, columns);
   }
 
-  /// Check if device has notch
-  static bool hasNotch(BuildContext context) {
-    return getTopSafeArea(context) > 24;
-  }
-
-  /// Get device pixel ratio
-  static double getPixelRatio(BuildContext context) {
-    return MediaQuery.of(context).devicePixelRatio;
-  }
-
-  /// Get text scale factor
-  static double getTextScaleFactor(BuildContext context) {
-    return MediaQuery.of(context).textScaler.scale(1.0);
+  /// Get debug info for development
+  static Map<String, dynamic> getDebugInfo() {
+    if (!_isInitialized) return {'error': 'Not initialized'};
+    
+    return {
+      'screenSize': '${screenWidth.toStringAsFixed(1)} x ${screenHeight.toStringAsFixed(1)}',
+      'deviceType': _deviceType.toString(),
+      'scaleFactor': _scaleFactor!.toStringAsFixed(2),
+      'pixelRatio': pixelRatio.toStringAsFixed(2),
+      'textScaleFactor': textScaleFactor.toStringAsFixed(2),
+      'statusBarHeight': statusBarHeight.toStringAsFixed(1),
+      'bottomSafeArea': bottomSafeArea.toStringAsFixed(1),
+      'isLandscape': isLandscape(),
+      'hasNotch': hasNotch(),
+    };
   }
 }
 
@@ -347,92 +379,36 @@ class ResponsiveUtils {
 enum DeviceType {
   mobile,
   tablet,
-  desktop;
-  
-  String get name => toString().split('.').last;
-}
-
-/// Responsive breakpoint enumeration
-enum ResponsiveBreakpoint {
-  mobile,
-  tablet,
   desktop,
 }
 
-/// Game layout configuration
-class GameLayout {
-  final Size screenSize;
-  final DeviceType deviceType;
-  final GameConfig gridConfig;
-  final double hudHeight;
-  final double slotsHeight;
-  final double powerUpHeight;
-  final double sideMargin;
-  final bool isLandscape;
-
-  const GameLayout({
-    required this.screenSize,
-    required this.deviceType,
-    required this.gridConfig,
-    required this.hudHeight,
-    required this.slotsHeight,
-    required this.powerUpHeight,
-    required this.sideMargin,
-    required this.isLandscape,
-  });
-
-  /// Get total game area height
-  double get totalGameHeight => 
-      hudHeight + gridConfig.totalGridSize + slotsHeight + powerUpHeight;
-
-  /// Check if layout fits in screen
-  bool get fitsInScreen => totalGameHeight <= screenSize.height;
+/// Icon size enumeration
+enum IconSize {
+  small,
+  medium,
+  large,
+  extraLarge,
 }
 
-/// Slot layout configuration
-class SlotLayout {
-  final Size slotSize;
-  final double spacing;
-  final double totalWidth;
-  final double centerOffset;
-
-  const SlotLayout({
-    required this.slotSize,
-    required this.spacing,
-    required this.totalWidth,
-    required this.centerOffset,
-  });
-}
-
-/// Game configuration for Flame game
+/// Game configuration class
 class GameConfig {
   final int gridSize;
   final double cellSize;
-  final DeviceType deviceType;
-  final Size screenSize;
+  final double gridSpacing;
+  final double totalGridSize;
+  final double scale;
 
   const GameConfig({
     required this.gridSize,
     required this.cellSize,
-    required this.deviceType,
-    required this.screenSize,
+    required this.gridSpacing,
+    required this.totalGridSize,
+    required this.scale,
   });
 
-  /// Get total grid size including spacing
-  double get totalGridSize {
-    return (cellSize * gridSize) + ((gridSize - 1) * AppConstants.cellSpacing);
-  }
-
-  /// Get grid bounds
-  Rect get gridBounds {
-    final totalSize = totalGridSize;
-    final centerX = screenSize.width / 2;
-    final centerY = screenSize.height / 2;
-    
-    return Rect.fromCenter(
-      center: Offset(centerX, centerY),
-      width: totalSize,
-      height: totalSize,
-    );
+  @override
+  String toString() {
+    return 'GameConfig(gridSize: $gridSize, cellSize: ${cellSize.toStringAsFixed(1)}, '
+           'totalSize: ${totalGridSize.toStringAsFixed(1)}, scale: ${scale.toStringAsFixed(2)})';
   }
 }

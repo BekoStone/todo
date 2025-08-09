@@ -1,8 +1,7 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:audioplayers/audioplayers.dart';
-import 'package:flutter/foundation.dart';
-import '../constants/app_constants.dart';
+import 'package:flutter/services.dart';
 
 /// AudioService manages all audio playback in the application.
 /// Handles music, sound effects, volume control, and audio state management.
@@ -19,8 +18,8 @@ class AudioService {
   bool _isInitialized = false;
   bool _musicEnabled = true;
   bool _sfxEnabled = true;
-  double _musicVolume = AppConstants.defaultMusicVolume;
-  double _sfxVolume = AppConstants.defaultSfxVolume;
+  double _musicVolume = 0.7;
+  double _sfxVolume = 0.8;
   
   // Current audio state
   String? _currentMusicTrack;
@@ -37,7 +36,7 @@ class AudioService {
   // Audio file paths
   static const Map<String, String> _musicTracks = {
     'menu': 'audio/music/menu_theme.mp3',
-    'game': 'audio/music/game_theme.mp3',
+    'game_background': 'audio/music/game_theme.mp3',
     'victory': 'audio/music/victory_theme.mp3',
     'ambient': 'audio/music/ambient_theme.mp3',
   };
@@ -46,18 +45,20 @@ class AudioService {
     // UI Sounds
     'ui_click': 'audio/sfx/ui_click.wav',
     'ui_navigate': 'audio/sfx/ui_navigate.wav',
+    'ui_toggle': 'audio/sfx/ui_toggle.wav',
     'ui_success': 'audio/sfx/ui_success.wav',
     'ui_error': 'audio/sfx/ui_error.wav',
-    'ui_achievement': 'audio/sfx/ui_achievement.wav',
+    'achievement_unlock': 'audio/sfx/achievement_unlock.wav',
+    'achievement_unlocked': 'audio/sfx/achievement_unlock.wav',
     
     // Game Sounds
     'block_place': 'audio/sfx/block_place.wav',
     'block_drag': 'audio/sfx/block_drag.wav',
     'block_snap': 'audio/sfx/block_snap.wav',
-    'line_clear_1': 'audio/sfx/line_clear_single.wav',
-    'line_clear_2': 'audio/sfx/line_clear_double.wav',
-    'line_clear_3': 'audio/sfx/line_clear_triple.wav',
-    'line_clear_4': 'audio/sfx/line_clear_quad.wav',
+    'line_clear_single': 'audio/sfx/line_clear_single.wav',
+    'line_clear_double': 'audio/sfx/line_clear_double.wav',
+    'line_clear_triple': 'audio/sfx/line_clear_triple.wav',
+    'line_clear_quad': 'audio/sfx/line_clear_quad.wav',
     'line_clear_mega': 'audio/sfx/line_clear_mega.wav',
     'combo_1': 'audio/sfx/combo_1.wav',
     'combo_2': 'audio/sfx/combo_2.wav',
@@ -66,9 +67,11 @@ class AudioService {
     'combo_5': 'audio/sfx/combo_5.wav',
     'level_up': 'audio/sfx/level_up.wav',
     'game_over': 'audio/sfx/game_over.wav',
-    'power_up': 'audio/sfx/power_up.wav',
+    'power_up_use': 'audio/sfx/power_up.wav',
+    'button_click': 'audio/sfx/ui_click.wav',
     
     // Feedback Sounds
+    'coins_earned': 'audio/sfx/coin_earn.wav',
     'coin_earn': 'audio/sfx/coin_earn.wav',
     'purchase': 'audio/sfx/purchase.wav',
     'unlock': 'audio/sfx/unlock.wav',
@@ -96,7 +99,7 @@ class AudioService {
     } catch (e, stackTrace) {
       developer.log('Failed to initialize AudioService: $e', name: 'AudioService', stackTrace: stackTrace);
       _isInitialized = false;
-      rethrow;
+      // Don't rethrow - audio failure shouldn't crash the app
     }
   }
 
@@ -131,9 +134,13 @@ class AudioService {
       }
     });
     
-    // SFX player listeners  
-    _sfxPlayer.onPlayerStateChanged.listen((PlayerState state) {
-      // SFX completion handling if needed
+    // Handle player errors
+    _musicPlayer.onLog.listen((String message) {
+      developer.log('Music player: $message', name: 'AudioService');
+    });
+    
+    _sfxPlayer.onLog.listen((String message) {
+      developer.log('SFX player: $message', name: 'AudioService');
     });
   }
 
@@ -147,76 +154,75 @@ class AudioService {
     }
   }
 
-  /// Preload critical audio files for instant playback
+  /// Preload critical audio files for better performance
   Future<void> _preloadCriticalAudio() async {
-    if (!kIsWeb) { // Skip preloading on web for performance
+    final criticalSounds = [
+      'ui_click',
+      'ui_navigate',
+      'block_place',
+      'game_over',
+    ];
+
+    for (final sound in criticalSounds) {
       try {
-        // Preload essential UI sounds
-        final criticalSfx = ['ui_click', 'ui_navigate', 'block_place', 'line_clear_1'];
-        
-        for (final sfxName in criticalSfx) {
-          final path = _soundEffects[sfxName];
-          if (path != null) {
-            await _sfxPlayer.setSource(AssetSource(path));
-            _audioCache[sfxName] = path;
-          }
+        if (_soundEffects.containsKey(sound)) {
+          final path = _soundEffects[sound]!;
+          _audioCache[sound] = path;
         }
-        
-        developer.log('Critical audio preloaded', name: 'AudioService');
       } catch (e) {
-        developer.log('Failed to preload critical audio: $e', name: 'AudioService');
+        developer.log('Failed to preload $sound: $e', name: 'AudioService');
       }
     }
+    
+    developer.log('Preloaded ${_audioCache.length} critical audio files', name: 'AudioService');
   }
 
   // ========================================
-  // MUSIC PLAYBACK
+  // MUSIC CONTROL
   // ========================================
 
-  /// Play background music track
-  Future<void> playMusic(String trackName, {bool fadeIn = false}) async {
+  /// Play background music
+  Future<void> playMusic(String trackName, {bool fadeIn = true}) async {
     if (!_isInitialized || !_musicEnabled) return;
-    
+
     try {
       final trackPath = _musicTracks[trackName];
       if (trackPath == null) {
         developer.log('Music track not found: $trackName', name: 'AudioService');
         return;
       }
-      
+
       // Stop current music if different track
-      if (_currentMusicTrack != trackName && _isMusicPlaying) {
-        await stopMusic(fadeOut: true);
+      if (_currentMusicTrack != trackName) {
+        await _musicPlayer.stop();
       }
-      
-      // Set new track
-      await _musicPlayer.setSource(AssetSource(trackPath));
-      
-      if (fadeIn) {
-        await _fadeInMusic();
-      } else {
-        await _musicPlayer.resume();
-      }
-      
+
       _currentMusicTrack = trackName;
+
+      if (fadeIn) {
+        await _fadeInMusic(trackPath);
+      } else {
+        await _musicPlayer.play(AssetSource(trackPath));
+      }
+
       developer.log('Playing music: $trackName', name: 'AudioService');
       
     } catch (e) {
-      developer.log('Failed to play music: $e', name: 'AudioService');
+      developer.log('Failed to play music $trackName: $e', name: 'AudioService');
     }
   }
 
   /// Stop background music
-  Future<void> stopMusic({bool fadeOut = false}) async {
+  Future<void> stopMusic({bool fadeOut = true}) async {
     if (!_isInitialized) return;
-    
+
     try {
       if (fadeOut && _isMusicPlaying) {
         await _fadeOutMusic();
       } else {
         await _musicPlayer.stop();
       }
-      
+
       _currentMusicTrack = null;
       developer.log('Music stopped', name: 'AudioService');
       
@@ -228,7 +234,7 @@ class AudioService {
   /// Pause background music
   Future<void> pauseMusic() async {
     if (!_isInitialized || !_isMusicPlaying) return;
-    
+
     try {
       await _musicPlayer.pause();
       developer.log('Music paused', name: 'AudioService');
@@ -240,7 +246,7 @@ class AudioService {
   /// Resume background music
   Future<void> resumeMusic() async {
     if (!_isInitialized || !_isMusicPaused) return;
-    
+
     try {
       await _musicPlayer.resume();
       developer.log('Music resumed', name: 'AudioService');
@@ -249,84 +255,120 @@ class AudioService {
     }
   }
 
+  /// Fade in music
+  Future<void> _fadeInMusic(String trackPath) async {
+    await _musicPlayer.setVolume(0.0);
+    await _musicPlayer.play(AssetSource(trackPath));
+    
+    const fadeDuration = Duration(milliseconds: 1500);
+    const steps = 30;
+     var stepDuration = Duration(milliseconds: fadeDuration.inMilliseconds ~/ steps);
+    
+    for (int i = 0; i <= steps; i++) {
+      final volume = (i / steps) * _musicVolume;
+      await _musicPlayer.setVolume(volume);
+      await Future.delayed(stepDuration);
+    }
+  }
+
+  /// Fade out music
+  Future<void> _fadeOutMusic() async {
+    const fadeDuration = Duration(milliseconds: 1000);
+    const steps = 20;
+     var stepDuration = Duration(milliseconds: fadeDuration.inMilliseconds ~/ steps);
+    
+    final currentVolume = _musicVolume;
+    
+    for (int i = steps; i >= 0; i--) {
+      final volume = (i / steps) * currentVolume;
+      await _musicPlayer.setVolume(volume);
+      await Future.delayed(stepDuration);
+    }
+    
+    await _musicPlayer.stop();
+    await _musicPlayer.setVolume(_musicVolume);
+  }
+
   // ========================================
   // SOUND EFFECTS
   // ========================================
-  Future<void> setSoundEffectsEnabled(bool enabled) async {
-    _sfxEnabled = enabled;
-    
-    if (!enabled && _sfxPlayer.state == PlayerState.playing) {
-      await _sfxPlayer.stop();
-    }
-    
-    developer.log('Sound effects enabled: $enabled', name: 'AudioService');
-  }
+
   /// Play sound effect
-  Future<void> playSfx(String sfxName, {double? volume}) async {
+  Future<void> playSfx(String soundName, {double? volume}) async {
     if (!_isInitialized || !_sfxEnabled) return;
-    
-    // Check cooldown to prevent spam
-    if (_isSfxOnCooldown(sfxName)) {
-      return;
-    }
-    
+
+    // Check cooldown to prevent audio spam
+    if (_isInCooldown(soundName)) return;
+
     try {
-      final sfxPath = _soundEffects[sfxName];
-      if (sfxPath == null) {
-        developer.log('Sound effect not found: $sfxName', name: 'AudioService');
+      final soundPath = _soundEffects[soundName];
+      if (soundPath == null) {
+        developer.log('Sound effect not found: $soundName', name: 'AudioService');
         return;
       }
-      
-      // Set volume (use provided or default)
-      final playVolume = volume ?? _sfxVolume;
-      await _sfxPlayer.setVolume(playVolume);
-      
-      // Play sound effect
-      await _sfxPlayer.play(AssetSource(sfxPath));
-      
-      // Set cooldown
-      _setSfxCooldown(sfxName);
-      
-      developer.log('Playing SFX: $sfxName', name: 'AudioService');
+
+      // Set volume
+      final effectiveVolume = (volume ?? 1.0) * _sfxVolume;
+      await _sfxPlayer.setVolume(effectiveVolume);
+
+      // Play sound
+      await _sfxPlayer.play(AssetSource(soundPath));
+
+      // Update cooldown
+      _updateCooldown(soundName);
+
+      developer.log('Played SFX: $soundName', name: 'AudioService');
       
     } catch (e) {
-      developer.log('Failed to play SFX $sfxName: $e', name: 'AudioService');
+      developer.log('Failed to play SFX $soundName: $e', name: 'AudioService');
     }
   }
 
-  /// Play multiple sound effects in sequence
-  Future<void> playSfxSequence(List<String> sfxNames, {Duration delay = const Duration(milliseconds: 100)}) async {
-    for (int i = 0; i < sfxNames.length; i++) {
-      await playSfx(sfxNames[i]);
-      if (i < sfxNames.length - 1) {
-        await Future.delayed(delay);
-      }
+  /// Play line clear sound based on lines cleared
+  Future<void> playLineClearSound(int linesCleared) async {
+    String soundName;
+    
+    switch (linesCleared) {
+      case 1:
+        soundName = 'line_clear_single';
+        break;
+      case 2:
+        soundName = 'line_clear_double';
+        break;
+      case 3:
+        soundName = 'line_clear_triple';
+        break;
+      case 4:
+        soundName = 'line_clear_quad';
+        break;
+      default:
+        soundName = 'line_clear_mega';
+        break;
     }
+    
+    await playSfx(soundName);
   }
 
-  /// Check if sound effect is on cooldown
-  bool _isSfxOnCooldown(String sfxName) {
-    final lastPlayed = _sfxCooldowns[sfxName];
+  /// Play combo sound based on combo count
+  Future<void> playComboSound(int comboCount) async {
+    if (comboCount <= 0) return;
+    
+    final comboLevel = (comboCount - 1).clamp(0, 4);
+    await playSfx('combo_${comboLevel + 1}');
+  }
+
+  /// Check if sound is in cooldown period
+  bool _isInCooldown(String soundName) {
+    final lastPlayed = _sfxCooldowns[soundName];
     if (lastPlayed == null) return false;
     
-    const cooldownPeriod = AppConstants.soundDebounceInterval;
-    return DateTime.now().difference(lastPlayed) < cooldownPeriod;
+    const cooldownDuration = Duration(milliseconds: 50);
+    return DateTime.now().difference(lastPlayed) < cooldownDuration;
   }
-Future<void> setSoundEffectsVolume(double volume) async {
-    _sfxVolume = volume.clamp(0.0, 1.0);
-    
-    if (_isInitialized) {
-      try {
-        await _sfxPlayer.setVolume(_sfxVolume);
-        developer.log('SFX volume set to: $_sfxVolume', name: 'AudioService');
-      } catch (e) {
-        developer.log('Failed to set SFX volume: $e', name: 'AudioService');
-      }
-    }
-  }
-  /// Set sound effect cooldown
-  void _setSfxCooldown(String sfxName) {
-    _sfxCooldowns[sfxName] = DateTime.now();
+
+  /// Update cooldown for sound
+  void _updateCooldown(String soundName) {
+    _sfxCooldowns[soundName] = DateTime.now();
   }
 
   // ========================================
@@ -338,154 +380,89 @@ Future<void> setSoundEffectsVolume(double volume) async {
     _musicVolume = volume.clamp(0.0, 1.0);
     
     if (_isInitialized) {
-      try {
-        await _musicPlayer.setVolume(_musicVolume);
-        developer.log('Music volume set to: $_musicVolume', name: 'AudioService');
-      } catch (e) {
-        developer.log('Failed to set music volume: $e', name: 'AudioService');
-      }
+      await _musicPlayer.setVolume(_musicVolume);
     }
+    
+    developer.log('Music volume set to ${(_musicVolume * 100).toInt()}%', name: 'AudioService');
   }
 
-  /// Set sound effects volume (0.0 to 1.0)
+  /// Set SFX volume (0.0 to 1.0)
   Future<void> setSfxVolume(double volume) async {
     _sfxVolume = volume.clamp(0.0, 1.0);
     
     if (_isInitialized) {
-      try {
-        await _sfxPlayer.setVolume(_sfxVolume);
-        developer.log('SFX volume set to: $_sfxVolume', name: 'AudioService');
-      } catch (e) {
-        developer.log('Failed to set SFX volume: $e', name: 'AudioService');
-      }
+      await _sfxPlayer.setVolume(_sfxVolume);
     }
+    
+    developer.log('SFX volume set to ${(_sfxVolume * 100).toInt()}%', name: 'AudioService');
   }
-
-  /// Get current music volume
-  double get musicVolume => _musicVolume;
-
-  /// Get current SFX volume
-  double get sfxVolume => _sfxVolume;
-
-  // ========================================
-  // AUDIO STATE CONTROL
-  // ========================================
 
   /// Enable/disable music
   Future<void> setMusicEnabled(bool enabled) async {
     _musicEnabled = enabled;
     
     if (!enabled && _isMusicPlaying) {
-      pauseMusic();
+      await pauseMusic();
     } else if (enabled && _isMusicPaused && _currentMusicTrack != null) {
-      resumeMusic();
+      await resumeMusic();
     }
     
-    developer.log('Music enabled: $enabled', name: 'AudioService');
+    developer.log('Music ${enabled ? 'enabled' : 'disabled'}', name: 'AudioService');
   }
 
   /// Enable/disable sound effects
   void setSfxEnabled(bool enabled) {
     _sfxEnabled = enabled;
-    developer.log('SFX enabled: $enabled', name: 'AudioService');
+    developer.log('SFX ${enabled ? 'enabled' : 'disabled'}', name: 'AudioService');
   }
-
-  /// Check if music is enabled
-  bool get isMusicEnabled => _musicEnabled;
-
-  /// Check if sound effects are enabled
-  bool get isSfxEnabled => _sfxEnabled;
-
-  /// Check if music is currently playing
-  bool get isMusicPlaying => _isMusicPlaying;
-
-  /// Get current music track name
-  String? get currentMusicTrack => _currentMusicTrack;
 
   // ========================================
-  // AUDIO EFFECTS
+  // HAPTIC FEEDBACK
   // ========================================
 
-  /// Fade in music over specified duration
-  Future<void> _fadeInMusic() async {
-    if (!_isInitialized) return;
-    
+  /// Trigger haptic feedback
+  Future<void> vibrate({HapticType type = HapticType.light}) async {
     try {
-      await _musicPlayer.setVolume(0.0);
-      await _musicPlayer.resume();
-      
-      const stepDuration = Duration(milliseconds: 50);
-      const steps = 20;
-      final volumeStep = _musicVolume / steps;
-      
-      _fadeTimer?.cancel();
-      _fadeTimer = Timer.periodic(stepDuration, (timer) async {
-        final currentStep = timer.tick;
-        final newVolume = volumeStep * currentStep;
-        
-        if (currentStep >= steps) {
-          await _musicPlayer.setVolume(_musicVolume);
-          timer.cancel();
-        } else {
-          await _musicPlayer.setVolume(newVolume);
-        }
-      });
-      
+      switch (type) {
+        case HapticType.light:
+          await HapticFeedback.lightImpact();
+          break;
+        case HapticType.medium:
+          await HapticFeedback.mediumImpact();
+          break;
+        case HapticType.heavy:
+          await HapticFeedback.heavyImpact();
+          break;
+        case HapticType.selection:
+          await HapticFeedback.selectionClick();
+          break;
+      }
     } catch (e) {
-      developer.log('Failed to fade in music: $e', name: 'AudioService');
-    }
-  }
-
-  /// Fade out music over specified duration
-  Future<void> _fadeOutMusic() async {
-    if (!_isInitialized) return;
-    
-    try {
-      const stepDuration = Duration(milliseconds: 50);
-      const steps = 20;
-      final volumeStep = _musicVolume / steps;
-      
-      _fadeTimer?.cancel();
-      _fadeTimer = Timer.periodic(stepDuration, (timer) async {
-        final currentStep = timer.tick;
-        final newVolume = _musicVolume - (volumeStep * currentStep);
-        
-        if (currentStep >= steps) {
-          await _musicPlayer.stop();
-          await _musicPlayer.setVolume(_musicVolume);
-          timer.cancel();
-        } else {
-          await _musicPlayer.setVolume(newVolume.clamp(0.0, 1.0));
-        }
-      });
-      
-    } catch (e) {
-      developer.log('Failed to fade out music: $e', name: 'AudioService');
-    }
-  }
-
-  /// Cross-fade between music tracks
-  Future<void> crossFadeMusic(String newTrackName, {Duration duration = const Duration(seconds: 2)}) async {
-    if (!_isInitialized || !_musicEnabled) return;
-    
-    try {
-      // Start fade out of current track
-      await _fadeOutMusic();
-      
-      // Wait a moment then start new track with fade in
-      await Future.delayed(const Duration(milliseconds: 200));
-      await playMusic(newTrackName, fadeIn: true);
-      
-      developer.log('Cross-faded to: $newTrackName', name: 'AudioService');
-      
-    } catch (e) {
-      developer.log('Failed to cross-fade music: $e', name: 'AudioService');
+      developer.log('Failed to trigger haptic feedback: $e', name: 'AudioService');
     }
   }
 
   // ========================================
   // UTILITY METHODS
   // ========================================
+
+  /// Get current music track
+  String? get currentMusicTrack => _currentMusicTrack;
+
+  /// Check if music is playing
+  bool get isMusicPlaying => _isMusicPlaying;
+
+  /// Check if music is enabled
+  bool get isMusicEnabled => _musicEnabled;
+
+  /// Check if SFX is enabled
+  bool get isSfxEnabled => _sfxEnabled;
+
+  /// Get music volume
+  double get musicVolume => _musicVolume;
+
+  /// Get SFX volume
+  double get sfxVolume => _sfxVolume;
 
   /// Get available music tracks
   List<String> get availableMusicTracks => _musicTracks.keys.toList();
@@ -543,4 +520,12 @@ Future<void> setSoundEffectsVolume(double volume) async {
       developer.log('Error disposing AudioService: $e', name: 'AudioService');
     }
   }
+}
+
+/// Haptic feedback types
+enum HapticType {
+  light,
+  medium,
+  heavy,
+  selection,
 }

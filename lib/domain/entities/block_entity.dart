@@ -197,7 +197,7 @@ class Block extends Equatable {
     required List<List<int>> shape,
     String? id,
     int? colorId,
-    BlockType? type,
+    BlockType? type, required int level,
   }) {
     return Block(
       id: id ?? _generateId(),
