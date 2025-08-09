@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:puzzle_box/core/state/ui_state.dart';
 import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
-import 'package:puzzle_box/presentation/pages/game_page_dart.dart';
-import 'package:puzzle_box/presentation/pages/main_menu_page_dart.dart';
-import 'package:puzzle_box/presentation/pages/settings_page.dart';
 import 'package:puzzle_box/core/utils/responsive_utils.dart';
-import 'package:puzzle_box/presentation/pages/splash_page_dart.dart';
+import 'package:puzzle_box/presentation/navigation/app_navigator.dart';
 import 'injection_container.dart' as di;
-import 'core/theme/colors.dart';
+import 'core/theme/app_theme.dart' hide AppTheme;
+import 'core/constants/app_constants.dart';
+import 'core/utils/performance_utils.dart';
 
+/// BoxHooksApp is the root application widget.
+/// Sets up global state management, theming, and navigation.
+/// Optimized for 60 FPS performance with proper memory management.
 class BoxHooksApp extends StatelessWidget {
   const BoxHooksApp({super.key});
 
@@ -42,7 +45,7 @@ class BoxHooksApp extends StatelessWidget {
           return BlocBuilder<UICubit, UIState>(
             builder: (context, uiState) {
               return MaterialApp(
-                title: 'Box Hooks',
+                title: AppConstants.appName,
                 debugShowCheckedModeBanner: false,
                 theme: AppTheme.lightTheme,
                 darkTheme: AppTheme.darkTheme,
@@ -60,20 +63,22 @@ class BoxHooksApp extends StatelessWidget {
                 builder: (context, child) {
                   return MediaQuery(
                     data: MediaQuery.of(context).copyWith(
-                      textScaleFactor: MediaQuery.of(context)
-                          .textScaleFactor
-                          .clamp(0.8, 1.3), // Limit text scaling
+                      textScaler: TextScaler.linear(
+                        MediaQuery.of(context).textScaler.scale(1.0).clamp(0.8, 1.2),
+                      ),
                     ),
-                    child: child!,
+                    child: _wrapWithPerformanceMonitoring(child),
                   );
                 },
                 
-                // Error handling for routing
-                onUnknownRoute: (settings) {
-                  return MaterialPageRoute(
-                    builder: (context) => const MainMenuPage(),
-                  );
-                },
+                // Global navigation observer for performance tracking
+                navigatorObservers: [
+                  _AppNavigationObserver(),
+                ],
+                
+                // Global shortcuts for better UX
+                shortcuts: _buildShortcuts(),
+                actions: _buildActions(context),
               );
             },
           );
@@ -82,318 +87,324 @@ class BoxHooksApp extends StatelessWidget {
     );
   }
 
+  /// Convert UI state theme to Flutter ThemeMode
   ThemeMode _getThemeMode(AppTheme theme) {
     switch (theme) {
       case AppTheme.light:
         return ThemeMode.light;
       case AppTheme.dark:
         return ThemeMode.dark;
-      case AppTheme.system:
+      case AppTheme.auto:
         return ThemeMode.system;
     }
   }
 
+  /// Handle global UI state changes
   void _handleGlobalUIChanges(BuildContext context, UIState state) {
-    // Handle error display
-    if (state.hasError && state.errorMessage != null) {
-      _showErrorSnackBar(context, state.errorMessage!);
+    // Handle haptic feedback
+    if (state.shouldHapticFeedback) {
+      HapticFeedback.lightImpact();
     }
-    
-    // Handle achievement notifications
-    if (state.showAchievementNotification) {
-      _showAchievementNotification(context);
+
+    // Handle system UI overlay changes
+    if (state.currentPage == AppPage.game) {
+      _setGameModeSystemUI();
+    } else {
+      _setNormalSystemUI();
+    }
+
+    // Handle screen orientation locks
+    _handleOrientationChanges(state.currentPage);
+
+    // Handle notification callbacks
+    if (state.shouldShowNotification && state.notificationMessage != null) {
+      _showGlobalNotification(context, state.notificationMessage!);
+    }
+
+    // Handle error states
+    if (state.hasError && state.errorMessage != null) {
+      _showGlobalError(context, state.errorMessage!);
     }
   }
 
-  void _showErrorSnackBar(BuildContext context, String message) {
+  /// Set system UI for game mode (immersive)
+  void _setGameModeSystemUI() {
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.immersiveSticky,
+      overlays: [],
+    );
+  }
+
+  /// Set system UI for normal app mode
+  void _setNormalSystemUI() {
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.edgeToEdge,
+      overlays: SystemUiOverlay.values,
+    );
+  }
+
+  /// Handle orientation changes per page
+  void _handleOrientationChanges(AppPage page) {
+    switch (page) {
+      case AppPage.game:
+        // Allow both orientations for game
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+        break;
+      default:
+        // Prefer portrait for other pages
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+        ]);
+        break;
+    }
+  }
+
+  /// Show global notification
+  void _showGlobalNotification(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  /// Show global error
+  void _showGlobalError(BuildContext context, String error) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
-            const Icon(Icons.error, color: Colors.white),
+            const Icon(Icons.error_outline, color: Colors.white),
             const SizedBox(width: 8),
-            Expanded(child: Text(message)),
+            Expanded(child: Text(error)),
           ],
         ),
-        backgroundColor: AppColors.error,
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
         action: SnackBarAction(
           label: 'Dismiss',
           textColor: Colors.white,
           onPressed: () {
-            context.read<UICubit>().hideError();
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
           },
         ),
       ),
     );
   }
 
-  void _showAchievementNotification(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Row(
-          children: [
-            Icon(Icons.emoji_events, color: AppColors.warning),
-            SizedBox(width: 8),
-            Text('New achievement unlocked!'),
-          ],
-        ),
-        backgroundColor: AppColors.success,
-        duration: const Duration(seconds: 3),
-        action: SnackBarAction(
-          label: 'View',
-          textColor: Colors.white,
-          onPressed: () {
-            context.read<UICubit>().navigateToPage(AppPage.achievements);
-          },
-        ),
-      ),
-    );
-  }
-}
-
-/// Main app navigator that handles page switching
-class AppNavigator extends StatelessWidget {
-  const AppNavigator({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return BlocBuilder<UICubit, UIState>(
-      builder: (context, state) {
-        return AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          transitionBuilder: (child, animation) {
-            return SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(1.0, 0.0),
-                end: Offset.zero,
-              ).animate(animation),
-              child: child,
-            );
-          },
-          child: _buildPageForCurrentState(state),
-        );
-      },
-    );
-  }
-
-  Widget _buildPageForCurrentState(UIState state) {
-    switch (state.currentPage) {
-      case AppPage.splash:
-        return const SplashPage(key: ValueKey('splash'));
-      
-      case AppPage.mainMenu:
-        return const MainMenuPage(key: ValueKey('mainMenu'));
-      
-      case AppPage.game:
-        return GamePage(
-          key: const ValueKey('game'),
-          arguments: state.navigationArguments,
-        );
-      
-      case AppPage.settings:
-        return const SettingsPage(key: ValueKey('settings'));
-      
-      case AppPage.achievements:
-        return const AchievementsPage(key: ValueKey('achievements'));
-      
-      case AppPage.leaderboard:
-        return const LeaderboardPage(key: ValueKey('leaderboard'));
-    }
-  }
-}
-
-/// Placeholder for achievements page
-class AchievementsPage extends StatelessWidget {
-  const AchievementsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.darkBackground,
-      appBar: AppBar(
-        title: const Text('Achievements'),
-        backgroundColor: AppColors.darkSurface,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            context.read<UICubit>().navigateToPage(AppPage.mainMenu);
-          },
-        ),
-      ),
-      body: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.emoji_events_rounded,
-              size: 64,
-              color: AppColors.warning,
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Achievements',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Coming Soon!',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.white70,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Placeholder for leaderboard page
-class LeaderboardPage extends StatelessWidget {
-  const LeaderboardPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.darkBackground,
-      appBar: AppBar(
-        title: const Text('Leaderboard'),
-        backgroundColor: AppColors.darkSurface,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            context.read<UICubit>().navigateToPage(AppPage.mainMenu);
-          },
-        ),
-      ),
-      body: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.leaderboard_rounded,
-              size: 64,
-              color: AppColors.info,
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Leaderboard',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Coming Soon!',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.white70,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Global app theme configuration
-class AppThemeConfig {
-  static const Duration animationDuration = Duration(milliseconds: 300);
-  static const Duration longAnimationDuration = Duration(milliseconds: 800);
-  static const Duration shortAnimationDuration = Duration(milliseconds: 150);
-  
-  static const Curve animationCurve = Curves.easeInOut;
-  static const Curve fastAnimationCurve = Curves.easeOut;
-  static const Curve slowAnimationCurve = Curves.easeInOutCubic;
-  
-  // Screen breakpoints
-  static const double mobileBreakpoint = 600;
-  static const double tabletBreakpoint = 900;
-  static const double desktopBreakpoint = 1200;
-  
-  // Safe area padding
-  static const EdgeInsets defaultPadding = EdgeInsets.all(16);
-  static const EdgeInsets largePadding = EdgeInsets.all(24);
-  static const EdgeInsets extraLargePadding = EdgeInsets.all(32);
-  
-  // Border radius
-  static const double defaultBorderRadius = 12;
-  static const double largeBorderRadius = 16;
-  static const double extraLargeBorderRadius = 24;
-}
-
-/// Error boundary widget
-class ErrorBoundary extends StatelessWidget {
-  final Widget child;
-  final String? errorMessage;
-
-  const ErrorBoundary({
-    super.key,
-    required this.child,
-    this.errorMessage,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (errorMessage != null) {
-      return Scaffold(
-        backgroundColor: AppColors.darkBackground,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.error_outline,
-                size: 64,
-                color: AppColors.error,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Something went wrong',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                errorMessage!,
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: Colors.white70,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () {
-                  // Restart app or navigate to safe page
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (context) => const BoxHooksApp()),
-                    (route) => false,
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Restart App'),
-              ),
-            ],
+  /// Wrap child with performance monitoring overlay
+  Widget _wrapWithPerformanceMonitoring(Widget? child) {
+    if (child == null) return const SizedBox.shrink();
+    
+    if (AppConstants.enablePerformanceMonitoring) {
+      return Stack(
+        children: [
+          child,
+          Positioned(
+            top: 50,
+            right: 10,
+            child: _PerformanceOverlay(),
           ),
-        ),
+        ],
       );
     }
-
+    
     return child;
   }
+
+  /// Build keyboard shortcuts map
+  Map<ShortcutActivator, Intent> _buildShortcuts() {
+    return {
+      const SingleActivator(LogicalKeyboardKey.escape): const _BackIntent(),
+      const SingleActivator(LogicalKeyboardKey.space): const _PauseIntent(),
+      const SingleActivator(LogicalKeyboardKey.enter): const _ConfirmIntent(),
+    };
+  }
+
+  /// Build action map for shortcuts
+  Map<Type, Action<Intent>> _buildActions(BuildContext context) {
+    return {
+      _BackIntent: CallbackAction<_BackIntent>(
+        onInvoke: (_) {
+          context.read<UICubit>().goBack();
+          return null;
+        },
+      ),
+      _PauseIntent: CallbackAction<_PauseIntent>(
+        onInvoke: (_) {
+          final uiState = context.read<UICubit>().state;
+          if (uiState.currentPage == AppPage.game) {
+            context.read<UICubit>().showPauseOverlay();
+          }
+          return null;
+        },
+      ),
+      _ConfirmIntent: CallbackAction<_ConfirmIntent>(
+        onInvoke: (_) {
+          // Handle enter key confirmation logic
+          return null;
+        },
+      ),
+    };
+  }
+}
+
+/// Performance monitoring overlay widget
+class _PerformanceOverlay extends StatefulWidget {
+  @override
+  State<_PerformanceOverlay> createState() => _PerformanceOverlayState();
+}
+
+class _PerformanceOverlayState extends State<_PerformanceOverlay>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  bool _isExpanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final metrics = PerformanceUtils.getMetrics();
+    
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _isExpanded = !_isExpanded;
+          if (_isExpanded) {
+            _animationController.forward();
+          } else {
+            _animationController.reverse();
+          }
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        width: _isExpanded ? 200 : 60,
+        height: _isExpanded ? 120 : 60,
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.7),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        padding: const EdgeInsets.all(8),
+        child: _isExpanded ? _buildExpandedView(metrics) : _buildCollapsedView(metrics),
+      ),
+    );
+  }
+
+  Widget _buildCollapsedView(PerformanceMetrics metrics) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          '${metrics.averageFPS.toStringAsFixed(0)}',
+          style: TextStyle(
+            color: _getFPSColor(metrics.averageFPS),
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const Text(
+          'FPS',
+          style: TextStyle(
+            color: Colors.white70,
+            fontSize: 10,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExpandedView(PerformanceMetrics metrics) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'FPS: ${metrics.averageFPS.toStringAsFixed(1)}',
+          style: TextStyle(
+            color: _getFPSColor(metrics.averageFPS),
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          'Mem: ${metrics.currentMemoryMB.toStringAsFixed(1)}MB',
+          style: TextStyle(
+            color: _getMemoryColor(metrics.currentMemoryMB),
+            fontSize: 10,
+          ),
+        ),
+        Text(
+          'Dropped: ${metrics.droppedFrames}',
+          style: const TextStyle(color: Colors.white70, fontSize: 10),
+        ),
+        if (metrics.coldStartTime != null)
+          Text(
+            'Cold: ${metrics.coldStartTime!.inMilliseconds}ms',
+            style: const TextStyle(color: Colors.white70, fontSize: 10),
+          ),
+      ],
+    );
+  }
+
+  Color _getFPSColor(double fps) {
+    if (fps >= 55) return Colors.green;
+    if (fps >= 45) return Colors.orange;
+    return Colors.red;
+  }
+
+  Color _getMemoryColor(double memoryMB) {
+    if (memoryMB < 100) return Colors.green;
+    if (memoryMB < 150) return Colors.orange;
+    return Colors.red;
+  }
+}
+
+/// Navigation observer for performance tracking
+class _AppNavigationObserver extends NavigatorObserver {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+    PerformanceUtils.recordFrameTime(16.67); // Reset frame tracking on navigation
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    PerformanceUtils.recordFrameTime(16.67); // Reset frame tracking on navigation
+  }
+}
+
+/// Intent classes for keyboard shortcuts
+class _BackIntent extends Intent {
+  const _BackIntent();
+}
+
+class _PauseIntent extends Intent {
+  const _PauseIntent();
+}
+
+class _ConfirmIntent extends Intent {
+  const _ConfirmIntent();
 }

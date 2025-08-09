@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
+import 'package:puzzle_box/core/state/player_state.dart';
 import 'package:puzzle_box/domain/entities/power_up_entity.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 import '../common/gradient_button.dart';

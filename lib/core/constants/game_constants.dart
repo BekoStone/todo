@@ -1,492 +1,458 @@
 import 'package:flutter/foundation.dart';
 
-/// Game-specific constants and configuration values.
-/// Centralized configuration for all game mechanics, UI, and performance settings.
-/// Single source of truth to prevent API inconsistencies.
+/// GameConstants defines all game-specific constants for Box Hooks.
+/// Centralizes game mechanics, scoring, timing, and balance parameters.
+/// Separated from AppConstants to maintain Clean Architecture boundaries.
 class GameConstants {
   // Prevent instantiation
   GameConstants._();
 
   // ========================================
-  // CORE GAME MECHANICS
+  // 🎮 CORE GAME MECHANICS
   // ========================================
   
-  /// Game grid dimensions (8x8 for puzzle game)
-  static const int gridSize = 8;
-  static const int totalCells = gridSize * gridSize;
-  
-  /// Grid spacing and layout
-  static const double gridSpacing = 2.0;
-  static const double cellSpacing = 2.0; // Alias for consistency
-  static const double cellBorderRadius = 4.0;
-  static const double gridPadding = 16.0;
+  /// Grid configuration
+  static const int defaultGridSize = 10;
+  static const int minGridSize = 8;
+  static const int maxGridSize = 12;
+  static const double cellBorderWidth = 1.0;
+  static const double gridPadding = 8.0;
   
   /// Block configuration
-  static const int maxActiveBlocks = 3;
-  static const double blockSpacing = 3.0;
-  static const double blockBorderRadius = 6.0;
-  static const double dragScaleMultiplier = 1.05;
+  static const int maxSimultaneousBlocks = 3;
+  static const int blockVariants = 7;
+  static const double blockAnimationDuration = 0.3;
+  static const double blockPlacementDelay = 0.1;
   
-  /// Game timing
-  static const Duration gameTickInterval = Duration(milliseconds: 16); // 60 FPS
-  static const Duration autoSaveInterval = Duration(minutes: 1);
-  static const Duration maxGameDuration = Duration(hours: 2);
+  /// Movement timing (optimized for 60 FPS)
+  static const double moveInputDelay = 0.05; // 50ms
+  static const double rotateInputDelay = 0.1; // 100ms
+  static const double fastDropMultiplier = 10.0;
 
   // ========================================
-  // SCORING SYSTEM
+  // 🏆 SCORING SYSTEM
   // ========================================
   
   /// Base scoring values
-  static const Map<String, int> baseScores = {
-    'blockPlace': 10,
-    'singleLine': 100,
-    'doubleLine': 250,
-    'tripleLine': 400,
-    'quadLine': 600,
-    'perfectClear': 1000,
-    'combo': 50,
-    'streak': 25,
-  };
-  
-  /// Combo multipliers (progressive)
-  static const List<double> comboMultipliers = [
-    1.0,  // No combo
-    1.2,  // 2x combo
-    1.5,  // 3x combo
-    1.8,  // 4x combo
-    2.2,  // 5x combo
-    2.7,  // 6x combo
-    3.3,  // 7x combo
-    4.0,  // 8x combo
-    5.0,  // 9x combo
-    6.0,  // 10x combo
-  ];
+  static const int pointsPerBlock = 10;
+  static const int pointsPerLine = 100;
+  static const int pointsPerPerfectClear = 500;
+  static const int comboBaseMultiplier = 2;
+  static const int maxComboMultiplier = 10;
   
   /// Level progression
-  static const int linesPerLevel = 10;
-  static const double scoreMultiplierPerLevel = 1.1;
-  static const int maxLevel = 50;
+  static const int pointsPerLevel = 1000;
+  static const double levelSpeedIncrease = 0.1;
+  static const int maxLevel = 99;
   
   /// Streak bonuses
-  static const Map<int, int> streakBonuses = {
-    5: 100,
-    10: 300,
-    15: 600,
-    20: 1000,
-    25: 1500,
-  };
+  static const int streakThreshold = 3;
+  static const double streakMultiplier = 1.5;
+  static const int maxStreakMultiplier = 5;
 
   // ========================================
-  // POWER-UPS SYSTEM
+  // ⚡ POWER-UPS SYSTEM
   // ========================================
   
-  /// Power-up limits
-  static const int maxUndoCount = 3;
-  static const int maxHints = 5;
-  static const int maxShuffles = 2;
+  /// Power-up availability
+  static const int maxPowerUpsPerGame = 5;
+  static const int powerUpCooldownSeconds = 30;
+  static const double powerUpSpawnRate = 0.15; // 15% chance
   
-  /// Power-up costs (in coins)
+  /// Power-up costs (coins)
   static const Map<String, int> powerUpCosts = {
-    'undo': 50,
-    'hint': 30,
-    'shuffle': 100,
-    'bomb': 150,
-    'freeze': 200,
+    'clearLine': 50,
+    'destroyBlock': 30,
+    'extraTime': 40,
+    'doubleScore': 60,
+    'perfectClear': 100,
   };
   
-  /// Power-up cooldowns (in seconds)
-  static const Map<String, int> powerUpCooldowns = {
-    'hint': 5,
-    'shuffle': 10,
-    'bomb': 15,
-    'freeze': 20,
+  /// Power-up durations (seconds)
+  static const Map<String, double> powerUpDurations = {
+    'doubleScore': 30.0,
+    'slowTime': 15.0,
+    'extraTime': 60.0,
   };
 
   // ========================================
-  // BLOCK SHAPES DEFINITION
+  // 🎯 DIFFICULTY SETTINGS
   // ========================================
   
-  /// All possible block shapes (Tetris-like pieces)
+  /// Difficulty multipliers for scoring
+  static const Map<String, double> difficultyScoreMultipliers = {
+    'easy': 0.8,
+    'normal': 1.0,
+    'hard': 1.3,
+    'expert': 1.6,
+  };
+  
+  /// Difficulty-based power-up availability
+  static const Map<String, double> difficultyPowerUpRates = {
+    'easy': 0.25,    // 25% spawn rate
+    'normal': 0.15,  // 15% spawn rate
+    'hard': 0.10,    // 10% spawn rate
+    'expert': 0.05,  // 5% spawn rate
+  };
+
+  // ========================================
+  // ⏱️ TIMING CONSTANTS
+  // ========================================
+  
+  /// Game timing (optimized for 60 FPS)
+  static const Duration targetFrameTime = Duration(milliseconds: 16); // ~60 FPS
+  static const Duration gameUpdateInterval = Duration(milliseconds: 16);
+  static const Duration uiUpdateInterval = Duration(milliseconds: 32); // 30 FPS for UI
+  
+  /// Animation durations
+  static const Duration blockDropDuration = Duration(milliseconds: 500);
+  static const Duration lineClearDuration = Duration(milliseconds: 300);
+  static const Duration comboAnimationDuration = Duration(milliseconds: 400);
+  static const Duration levelUpDuration = Duration(milliseconds: 800);
+  
+  /// Input timing
+  static const Duration longPressThreshold = Duration(milliseconds: 500);
+  static const Duration doubleTapWindow = Duration(milliseconds: 300);
+  static const Duration dragStartDelay = Duration(milliseconds: 100);
+
+  // ========================================
+  // 🎨 VISUAL CONSTANTS
+  // ========================================
+  
+  /// Animation curves and easing
+  static const String defaultEasing = 'easeInOutCubic';
+  static const double particleLifetime = 2.0; // seconds
+  static const int maxParticles = 50;
+  
+  /// Visual feedback
+  static const double hapticFeedbackStrength = 0.5;
+  static const double screenShakeIntensity = 2.0;
+  static const Duration screenShakeDuration = Duration(milliseconds: 200);
+
+  // ========================================
+  // 💰 ECONOMY CONSTANTS
+  // ========================================
+  
+  /// Coin rewards
+  static const int coinsPerLine = 5;
+  static const int coinsPerLevel = 25;
+  static const int coinsPerAchievement = 50;
+  static const int dailyBonusCoins = 100;
+  static const int perfectGameBonus = 200;
+  
+  /// Purchase limits
+  static const int maxCoinsPerPurchase = 10000;
+  static const int maxPowerUpPurchases = 10;
+
+  // ========================================
+  // 🏅 ACHIEVEMENT THRESHOLDS
+  // ========================================
+  
+  /// Score-based achievements
+  static const Map<String, int> scoreAchievements = {
+    'rookie': 1000,
+    'skilled': 5000,
+    'expert': 15000,
+    'master': 50000,
+    'legend': 100000,
+  };
+  
+  /// Gameplay achievements
+  static const Map<String, int> gameplayAchievements = {
+    'firstWin': 1,
+    'speedster': 10,      // Games completed under 5 min
+    'marathon': 50,       // Games over 30 min
+    'perfectionist': 5,   // Perfect clears
+    'comboMaster': 25,    // Max combo achieved
+  };
+
+  // ========================================
+  // 🔧 PERFORMANCE TUNING
+  // ========================================
+  
+  /// Memory management
+  static const int maxCachedBlocks = 20;
+  static const int maxAudioInstances = 8;
+  static const int maxParticleEffects = 30;
+  static const Duration cacheCleanupInterval = Duration(minutes: 5);
+  
+  /// Performance thresholds
+  static const double lowPerformanceThreshold = 45.0; // FPS
+  static const double highPerformanceThreshold = 55.0; // FPS
+  static const int memoryWarningThreshold = 100; // MB
+  
+  /// Auto-optimization settings
+  static const bool enableAutoOptimization = true;
+  static const bool enablePerformanceMonitoring = kDebugMode;
+  static const bool enableMemoryOptimization = true;
+
+  // ========================================
+  // 📱 RESPONSIVE DESIGN
+  // ========================================
+  
+  /// Screen size categories
+  static const double smallScreenWidth = 360.0;
+  static const double mediumScreenWidth = 768.0;
+  static const double largeScreenWidth = 1024.0;
+  
+  /// Scaling factors for different screen sizes
+  static const Map<String, double> uiScalingFactors = {
+    'small': 0.8,
+    'medium': 1.0,
+    'large': 1.2,
+    'xlarge': 1.4,
+  };
+  
+  /// Grid scaling based on screen size
+  static const Map<String, double> gridScalingFactors = {
+    'small': 0.85,
+    'medium': 1.0,
+    'large': 1.15,
+    'xlarge': 1.3,
+  };
+
+  // ========================================
+  // 🎵 AUDIO CONSTANTS
+  // ========================================
+  
+  /// Audio file names (consistent naming)
+  static const Map<String, String> audioFiles = {
+    'blockPlace': 'block_place.wav',
+    'lineClear': 'line_clear.wav',
+    'levelUp': 'level_up.wav',
+    'gameOver': 'game_over.wav',
+    'perfectClear': 'perfect_clear.wav',
+    'powerUpActivate': 'powerup_activate.wav',
+    'uiClick': 'ui_click.wav',
+    'uiNavigate': 'ui_navigate.wav',
+    'backgroundMusic': 'background_music.mp3',
+  };
+  
+  /// Audio settings
+  static const double defaultMusicVolume = 0.7;
+  static const double defaultSfxVolume = 0.8;
+  static const int maxConcurrentSounds = 6;
+
+  // ========================================
+  // 🚀 OPTIMIZATION FLAGS
+  // ========================================
+  
+  /// Development and debugging
+  static const bool enableDebugMode = kDebugMode;
+  static const bool enablePerformanceLogs = kDebugMode;
+  static const bool enableFrameRateDisplay = kDebugMode;
+  static const bool enableMemoryDisplay = kDebugMode;
+  
+  /// Feature flags
+  static const bool enableAdvancedAnimations = true;
+  static const bool enableParticleEffects = true;
+  static const bool enableHapticFeedback = true;
+  static const bool enableScreenShake = true;
+  
+  /// Platform-specific optimizations
+  static const bool enablePlatformOptimizations = true;
+  static const bool useNativeRendering = true;
+  static const bool enableTextureCompression = true;
+
+  // ========================================
+  // 🔒 VALIDATION CONSTANTS
+  // ========================================
+  
+  /// Input validation
+  static const int maxUsernameLength = 20;
+  static const int minUsernameLength = 3;
+  static const int maxHighScoreEntries = 10;
+  
+  /// Game state validation
+  static const int maxUndoMoves = 3;
+  static const Duration maxGameDuration = Duration(hours: 2);
+  static const Duration minGameDuration = Duration(seconds: 30);
+  
+  /// Data validation
+  static const int maxSaveDataSize = 1024 * 1024; // 1MB
+  static const Duration dataValidityPeriod = Duration(days: 30);
+
+  // ========================================
+  // 🎮 BLOCK SHAPE DEFINITIONS
+  // ========================================
+  
+  /// Standard Tetris-like block shapes
   static const List<List<List<int>>> blockShapes = [
-    // I-piece (line)
+    // I-piece (line) - 4 blocks in a row
     [
       [1, 1, 1, 1]
     ],
     
-    // O-piece (square)
+    // O-piece (square) - 2x2 square
     [
       [1, 1],
       [1, 1]
     ],
     
-    // T-piece
+    // T-piece - T shape
     [
       [0, 1, 0],
       [1, 1, 1]
     ],
     
-    // L-piece
+    // L-piece - L shape
     [
       [1, 0],
       [1, 0],
       [1, 1]
     ],
     
-    // J-piece
+    // J-piece (reverse L) - reverse L shape
     [
       [0, 1],
       [0, 1],
       [1, 1]
     ],
     
-    // S-piece
+    // S-piece - S/Z shape
     [
       [0, 1, 1],
       [1, 1, 0]
     ],
     
-    // Z-piece
+    // Z-piece - Z shape
     [
       [1, 1, 0],
       [0, 1, 1]
     ],
-    
-    // Single block
-    [
-      [1]
-    ],
-    
-    // Double block (horizontal)
-    [
-      [1, 1]
-    ],
-    
-    // Double block (vertical)
-    [
-      [1],
-      [1]
-    ],
-    
-    // Triple block (horizontal)
-    [
-      [1, 1, 1]
-    ],
-    
-    // Triple block (vertical)
-    [
-      [1],
-      [1],
-      [1]
-    ],
-    
-    // Plus shape
-    [
-      [0, 1, 0],
-      [1, 1, 1],
-      [0, 1, 0]
-    ],
-    
-    // Small L
-    [
-      [1, 0],
-      [1, 1]
-    ],
-    
-    // Small reverse L
-    [
-      [0, 1],
-      [1, 1]
-    ],
+  ];
+  
+  /// Block colors (indices match blockShapes)
+  static const List<String> blockColorNames = [
+    'cyan',    // I-piece
+    'yellow',  // O-piece
+    'purple',  // T-piece
+    'orange',  // L-piece
+    'blue',    // J-piece
+    'green',   // S-piece
+    'red',     // Z-piece
   ];
 
   // ========================================
-  // DIFFICULTY SETTINGS
+  // 💾 SAVE/LOAD CONSTANTS
   // ========================================
   
-  /// Difficulty multipliers
-  static const Map<String, Map<String, double>> difficultyMultipliers = {
-    'easy': {
-      'scoreMultiplier': 0.8,
-      'timeMultiplier': 1.5,
-      'powerUpMultiplier': 1.5,
-    },
-    'normal': {
-      'scoreMultiplier': 1.0,
-      'timeMultiplier': 1.0,
-      'powerUpMultiplier': 1.0,
-    },
-    'hard': {
-      'scoreMultiplier': 1.3,
-      'timeMultiplier': 0.8,
-      'powerUpMultiplier': 0.7,
-    },
-    'expert': {
-      'scoreMultiplier': 1.6,
-      'timeMultiplier': 0.6,
-      'powerUpMultiplier': 0.5,
-    },
-  };
+  /// Save game settings
+  static const int maxSaveSlots = 3;
+  static const Duration autoSaveInterval = Duration(minutes: 2);
+  static const bool enableAutoSave = true;
+  static const bool enableCloudSave = false; // Future feature
+  
+  /// Data compression
+  static const bool enableDataCompression = true;
+  static const int compressionLevel = 6; // 1-9, higher = better compression
+}
 
-  // ========================================
-  // PERFORMANCE THRESHOLDS
-  // ========================================
+/// Block type enumeration for type safety
+enum BlockType {
+  i, o, t, l, j, s, z;
   
-  /// Target performance metrics
-  static const double minTargetFPS = 50.0;
-  static const double optimalFPS = 60.0;
-  static const int maxColdStartMs = 3000;
-  static const int maxMemoryUsageMB = 150;
-  static const double maxCPUUsagePercent = 80.0;
+  String get name => toString().split('.').last.toUpperCase();
   
-  /// Frame time thresholds (in milliseconds)
-  static const double criticalFrameTime = 20.0;
-  static const double warningFrameTime = 18.0;
-  static const double targetFrameTime = 16.67; // 60 FPS
+  List<List<int>> get shape => GameConstants.blockShapes[index];
+  
+  String get colorName => GameConstants.blockColorNames[index];
+  
+  int get shapeIndex => index;
+}
 
-  // ========================================
-  // ANIMATION SETTINGS
-  // ========================================
+/// Game mode enumeration
+enum GameMode {
+  classic,
+  timed,
+  endless,
+  puzzle;
   
-  /// Animation durations
-  static const Duration shortAnimationDuration = Duration(milliseconds: 150);
-  static const Duration mediumAnimationDuration = Duration(milliseconds: 300);
-  static const Duration longAnimationDuration = Duration(milliseconds: 600);
-  static const Duration extraLongAnimationDuration = Duration(milliseconds: 1000);
+  String get name => toString().split('.').last;
   
-  /// Specific game animations
-  static const Duration blockPlaceAnimationDuration = Duration(milliseconds: 200);
-  static const Duration lineClearAnimationDuration = Duration(milliseconds: 500);
-  static const Duration comboAnimationDuration = Duration(milliseconds: 300);
-  static const Duration levelUpAnimationDuration = Duration(milliseconds: 800);
-  
-  /// Animation curves (referenced by name for consistency)
-  static const String defaultAnimationCurve = 'easeInOut';
-  static const String bounceAnimationCurve = 'elasticOut';
-  static const String slideAnimationCurve = 'easeOutCubic';
-
-  // ========================================
-  // AUDIO SETTINGS
-  // ========================================
-  
-  /// Default audio levels
-  static const double defaultMusicVolume = 0.7;
-  static const double defaultSfxVolume = 0.8;
-  static const double maxAudioVolume = 1.0;
-  static const double minAudioVolume = 0.0;
-  
-  /// Audio fade durations
-  static const Duration musicFadeInDuration = Duration(milliseconds: 1500);
-  static const Duration musicFadeOutDuration = Duration(milliseconds: 1000);
-  static const Duration sfxFadeDuration = Duration(milliseconds: 200);
-  
-  /// SFX cooldowns to prevent audio spam
-  static const Duration sfxCooldownDuration = Duration(milliseconds: 50);
-  static const Duration uiSfxCooldownDuration = Duration(milliseconds: 100);
-
-  // ========================================
-  // UI/UX CONSTANTS
-  // ========================================
-  
-  /// Touch and gesture settings
-  static const double minTouchTargetSize = 44.0; // iOS/Android standard
-  static const double dragThreshold = 10.0;
-  static const Duration tapTimeout = Duration(milliseconds: 300);
-  static const Duration longPressTimeout = Duration(milliseconds: 500);
-  
-  /// Visual feedback
-  static const double selectionBorderWidth = 3.0;
-  static const double disabledOpacity = 0.5;
-  static const double hoveredOpacity = 0.8;
-  static const double pressedOpacity = 0.6;
-  
-  /// Loading and transitions
-  static const Duration splashMinDuration = Duration(seconds: 2);
-  static const Duration loadingTimeout = Duration(seconds: 30);
-  static const Duration pageTransitionDuration = Duration(milliseconds: 300);
-
-  // ========================================
-  // ECONOMY SYSTEM
-  // ========================================
-  
-  /// Coin rewards
-  static const int gameCompletionCoins = 10;
-  static const int dailyBonusCoins = 50;
-  static const int achievementBaseCoins = 25;
-  static const int levelUpCoins = 20;
-  static const int perfectClearCoins = 100;
-  
-  /// Shop prices
-  static const Map<String, int> shopPrices = {
-    'extraUndo': 100,
-    'extraHint': 75,
-    'extraShuffle': 150,
-    'doubleCoins': 200,
-    'removeAds': 500,
-  };
-  
-  /// Daily rewards progression
-  static const List<int> dailyRewards = [
-    50,   // Day 1
-    75,   // Day 2
-    100,  // Day 3
-    125,  // Day 4
-    150,  // Day 5
-    200,  // Day 6
-    300,  // Day 7 (weekly bonus)
-  ];
-
-  // ========================================
-  // ACHIEVEMENT THRESHOLDS
-  // ========================================
-  
-  /// Score-based achievements
-  static const Map<String, int> scoreAchievements = {
-    'score_1K': 1000,
-    'score_5K': 5000,
-    'score_10K': 10000,
-    'score_25K': 25000,
-    'score_50K': 50000,
-    'score_100K': 100000,
-  };
-  
-  /// Gameplay achievements
-  static const Map<String, int> gameplayAchievements = {
-    'games_10': 10,
-    'games_50': 50,
-    'games_100': 100,
-    'lines_100': 100,
-    'lines_500': 500,
-    'lines_1000': 1000,
-    'combos_5': 5,
-    'combos_10': 10,
-    'perfect_clears_5': 5,
-    'level_10': 10,
-    'level_25': 25,
-    'level_50': 50,
-  };
-  
-  /// Time-based achievements
-  static const Map<String, Duration> timeAchievements = {
-    'playtime_1h': Duration(hours: 1),
-    'playtime_10h': Duration(hours: 10),
-    'playtime_50h': Duration(hours: 50),
-    'daily_7': Duration(days: 7),
-    'daily_30': Duration(days: 30),
-  };
-
-  // ========================================
-  // GAME BALANCE
-  // ========================================
-  
-  /// Game over conditions
-  static const double gameOverThreshold = 85.0; // % of grid filled
-  static const int maxConsecutiveFailures = 5;
-  static const Duration maxIdleTime = Duration(minutes: 10);
-  
-  /// Block generation weights (probability distribution)
-  static const Map<int, double> blockGenerationWeights = {
-    0: 0.15,  // I-piece
-    1: 0.10,  // O-piece
-    2: 0.12,  // T-piece
-    3: 0.08,  // L-piece
-    4: 0.08,  // J-piece
-    5: 0.06,  // S-piece
-    6: 0.06,  // Z-piece
-    7: 0.20,  // Single block
-    8: 0.15,  // Other shapes
-  };
-  
-  /// Special event triggers
-  static const int comboThreshold = 3;
-  static const int streakThreshold = 5;
-  static const int perfectClearThreshold = 1;
-  static const double cascadeMultiplier = 1.5;
-
-  // ========================================
-  // DEBUG AND DEVELOPMENT
-  // ========================================
-  
-  /// Debug settings (only active in debug mode)
-  static const bool enablePerformanceOverlay = kDebugMode;
-  static const bool enableDebugPrint = kDebugMode;
-  static const bool enableFrameRateDisplay = kDebugMode;
-  static const bool enableMemoryDisplay = kDebugMode;
-  
-  /// Testing and validation
-  static const Duration testTimeout = Duration(seconds: 5);
-  static const int maxTestRetries = 3;
-  static const bool enableAutomaticTesting = false;
-  
-  /// Logging levels
-  static const int logLevel = kDebugMode ? 0 : 2; // 0=verbose, 1=info, 2=warning, 3=error
-
-  // ========================================
-  // UTILITY METHODS
-  // ========================================
-  
-  /// Get block shape by index
-  static List<List<int>> getBlockShape(int shapeIndex) {
-    if (shapeIndex < 0 || shapeIndex >= blockShapes.length) {
-      return blockShapes[7]; // Default to single block
+  String get displayName {
+    switch (this) {
+      case GameMode.classic:
+        return 'Classic';
+      case GameMode.timed:
+        return 'Time Attack';
+      case GameMode.endless:
+        return 'Endless';
+      case GameMode.puzzle:
+        return 'Puzzle';
     }
-    return blockShapes[shapeIndex];
   }
   
-  /// Get score for action
-  static int getScore(String action, {int multiplier = 1}) {
-    return (baseScores[action] ?? 0) * multiplier;
+  String get description {
+    switch (this) {
+      case GameMode.classic:
+        return 'Traditional block-stacking gameplay';
+      case GameMode.timed:
+        return 'Race against the clock';
+      case GameMode.endless:
+        return 'Play until the grid fills up';
+      case GameMode.puzzle:
+        return 'Solve predetermined challenges';
+    }
+  }
+}
+
+/// Performance preset enumeration
+enum PerformancePreset {
+  low,
+  medium,
+  high,
+  ultra;
+  
+  String get name => toString().split('.').last;
+  
+  String get displayName {
+    switch (this) {
+      case PerformancePreset.low:
+        return 'Low';
+      case PerformancePreset.medium:
+        return 'Medium';
+      case PerformancePreset.high:
+        return 'High';
+      case PerformancePreset.ultra:
+        return 'Ultra';
+    }
   }
   
-  /// Get combo multiplier
-  static double getComboMultiplier(int comboCount) {
-    if (comboCount <= 0) return 1.0;
-    final index = (comboCount - 1).clamp(0, comboMultipliers.length - 1);
-    return comboMultipliers[index];
-  }
-  
-  /// Calculate level from lines cleared
-  static int calculateLevel(int linesCleared) {
-    return (linesCleared / linesPerLevel).floor() + 1;
-  }
-  
-  /// Calculate experience points
-  static int calculateExperience(int score, int level, int linesCleared) {
-    return ((score * 0.1) + (level * 10) + (linesCleared * 5)).round();
-  }
-  
-  /// Get difficulty multiplier
-  static double getDifficultyMultiplier(String difficulty, String type) {
-    return difficultyMultipliers[difficulty]?[type] ?? 1.0;
-  }
-  
-  /// Check if performance is within acceptable range
-  static bool isPerformanceAcceptable(double fps, double memoryMB, int coldStartMs) {
-    return fps >= minTargetFPS && 
-           memoryMB <= maxMemoryUsageMB && 
-           coldStartMs <= maxColdStartMs;
-  }
-  
-  /// Get animation duration by name
-  static Duration getAnimationDuration(String name) {
-    switch (name) {
-      case 'short':
-        return shortAnimationDuration;
-      case 'medium':
-        return mediumAnimationDuration;
-      case 'long':
-        return longAnimationDuration;
-      case 'extraLong':
-        return extraLongAnimationDuration;
-      case 'blockPlace':
-        return blockPlaceAnimationDuration;
-      case 'lineClear':
-        return lineClearAnimationDuration;
-      case 'combo':
-        return comboAnimationDuration;
-      case 'levelUp':
-        return levelUpAnimationDuration;
-      default:
-        return mediumAnimationDuration;
+  Map<String, dynamic> get settings {
+    switch (this) {
+      case PerformancePreset.low:
+        return {
+          'enableParticles': false,
+          'enableAnimations': false,
+          'enableShaders': false,
+          'maxParticles': 10,
+          'targetFPS': 30,
+        };
+      case PerformancePreset.medium:
+        return {
+          'enableParticles': true,
+          'enableAnimations': true,
+          'enableShaders': false,
+          'maxParticles': 25,
+          'targetFPS': 45,
+        };
+      case PerformancePreset.high:
+        return {
+          'enableParticles': true,
+          'enableAnimations': true,
+          'enableShaders': true,
+          'maxParticles': 50,
+          'targetFPS': 60,
+        };
+      case PerformancePreset.ultra:
+        return {
+          'enableParticles': true,
+          'enableAnimations': true,
+          'enableShaders': true,
+          'maxParticles': 100,
+          'targetFPS': 60,
+        };
     }
   }
 }

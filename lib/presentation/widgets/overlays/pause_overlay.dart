@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:puzzle_box/domain/entities/game_session_entity.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
 import '../common/gradient_button.dart';
-import '../common/animated_counter.dart';
-import '../../../core/theme/colors.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/responsive_utils.dart';
+import '../../../core/services/audio_service.dart';
+import '../../../injection_container.dart';
 
+/// PauseOverlay provides game pause functionality with settings access.
+/// Optimized for performance with proper memory management and efficient animations.
+/// Follows Clean Architecture with proper state management integration.
 class PauseOverlay extends StatefulWidget {
-  /// The current game session
-  final GameSession gameSession;
-  
   /// Callback when resume is requested
   final VoidCallback? onResume;
   
@@ -19,16 +21,23 @@ class PauseOverlay extends StatefulWidget {
   /// Callback when main menu is requested
   final VoidCallback? onMainMenu;
   
-  /// Callback when settings is requested
+  /// Callback when settings are requested
   final VoidCallback? onSettings;
+  
+  /// Whether to show game statistics
+  final bool showStatistics;
+  
+  /// Current game statistics data
+  final Map<String, dynamic>? gameStats;
 
   const PauseOverlay({
     super.key,
-    required this.gameSession,
     this.onResume,
     this.onRestart,
     this.onMainMenu,
     this.onSettings,
+    this.showStatistics = true,
+    this.gameStats,
   });
 
   @override
@@ -36,169 +45,130 @@ class PauseOverlay extends StatefulWidget {
 }
 
 class _PauseOverlayState extends State<PauseOverlay>
-    with TickerProviderStateMixin {
-  late AnimationController _slideController;
-  late AnimationController _fadeController;
-  late AnimationController _pulseController;
+    with SingleTickerProviderStateMixin {
   
-  late Animation<Offset> _slideAnimation;
+  // Animation controller for overlay entrance/exit
+  late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  late Animation<double> _pulseAnimation;
+  late Animation<double> _scaleAnimation;
+  late Animation<Offset> _slideAnimation;
+  
+  // Audio service for sound effects
+  late AudioService _audioService;
+  
+  // State tracking
+  bool _isDisposed = false;
+  bool _showConfirmation = false;
+  String _confirmationAction = '';
 
   @override
   void initState() {
     super.initState();
-    _setupAnimations();
-    _startAnimations();
+    _initializeAnimations();
+    _initializeDependencies();
+    _startEntranceAnimation();
   }
 
   @override
   void dispose() {
-    _slideController.dispose();
-    _fadeController.dispose();
-    _pulseController.dispose();
+    _isDisposed = true;
+    _animationController.dispose();
     super.dispose();
   }
 
-  void _setupAnimations() {
-    _slideController = AnimationController(
-      duration: const Duration(milliseconds: 600),
+  void _initializeAnimations() {
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
       vsync: this,
     );
-
-    _fadeController = AnimationController(
-      duration: const Duration(milliseconds: 400),
-      vsync: this,
-    );
-
-    _pulseController = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    );
-
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, -1),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _slideController,
-      curve: Curves.elasticOut,
-    ));
 
     _fadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
     ).animate(CurvedAnimation(
-      parent: _fadeController,
-      curve: Curves.easeOut,
+      parent: _animationController,
+      curve: Curves.easeInOut,
     ));
 
-    _pulseAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.05,
+    _scaleAnimation = Tween<double>(
+      begin: 0.8,
+      end: 1.0,
     ).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
+      parent: _animationController,
+      curve: Curves.easeOutBack,
+    ));
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, -0.3),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOutCubic,
     ));
   }
 
-  void _startAnimations() {
-    _fadeController.forward();
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (mounted) {
-        _slideController.forward();
-      }
-    });
-    
-    // Start pulse animation for resume button
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (mounted) {
-        _pulseController.repeat(reverse: true);
-      }
-    });
+  void _initializeDependencies() {
+    _audioService = getIt<AudioService>();
+  }
+
+  void _startEntranceAnimation() {
+    if (!_isDisposed) {
+      _animationController.forward();
+    }
+  }
+
+  Future<void> _startExitAnimation() async {
+    if (!_isDisposed) {
+      await _animationController.reverse();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: Stack(
-        children: [
-          // Blurred background
-          _buildBlurredBackground(),
-          
-          // Main overlay content
-          _buildOverlayContent(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBlurredBackground() {
     return AnimatedBuilder(
-      animation: _fadeAnimation,
+      animation: _animationController,
       builder: (context, child) {
-        return Opacity(
-          opacity: _fadeAnimation.value * 0.8,
+        return FadeTransition(
+          opacity: _fadeAnimation,
           child: Container(
-            width: double.infinity,
-            height: double.infinity,
-            color: Colors.black,
+            color: Colors.black.withOpacity(0.7 * _fadeAnimation.value),
+            child: SlideTransition(
+              position: _slideAnimation,
+              child: ScaleTransition(
+                scale: _scaleAnimation,
+                child: Center(
+                  child: _showConfirmation 
+                      ? _buildConfirmationDialog()
+                      : _buildMainPauseMenu(),
+                ),
+              ),
+            ),
           ),
         );
       },
     );
   }
 
-  Widget _buildOverlayContent() {
-    return SafeArea(
-      child: Center(
-        child: SlideTransition(
-          position: _slideAnimation,
-          child: Container(
-            margin: EdgeInsets.symmetric(
-              horizontal: ResponsiveUtils.wp(5),
-            ),
-            padding: EdgeInsets.all(ResponsiveUtils.wp(6)),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppColors.darkSurface.withOpacity(0.95),
-                  AppColors.darkSurfaceVariant.withOpacity(0.95),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: AppColors.primary.withOpacity(0.3),
-                width: 2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.5),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Pause icon and title
-                _buildHeader(),
-                
-                SizedBox(height: ResponsiveUtils.hp(3)),
-                
-                // Game stats
-                _buildGameStats(),
-                
-                SizedBox(height: ResponsiveUtils.hp(4)),
-                
-                // Action buttons
-                _buildActionButtons(),
-              ],
-            ),
-          ),
+  Widget _buildMainPauseMenu() {
+    return Card(
+      margin: EdgeInsets.symmetric(
+        horizontal: ResponsiveUtils.wp(10),
+        vertical: ResponsiveUtils.hp(15),
+      ),
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(ResponsiveUtils.getAdaptivePadding()),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildHeader(),
+            SizedBox(height: ResponsiveUtils.hp(3)),
+            if (widget.showStatistics) ...[
+              _buildGameStatistics(),
+              SizedBox(height: ResponsiveUtils.hp(3)),
+            ],
+            _buildActionButtons(),
+          ],
         ),
       ),
     );
@@ -207,49 +177,23 @@ class _PauseOverlayState extends State<PauseOverlay>
   Widget _buildHeader() {
     return Column(
       children: [
-        // Pause icon
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [AppColors.primary, AppColors.secondary],
-            ),
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withOpacity(0.3),
-                blurRadius: 10,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          child: Icon(
-            Icons.pause_rounded,
-            color: Colors.white,
-            size: ResponsiveUtils.sp(32),
-          ),
+        Icon(
+          Icons.pause_circle_filled,
+          size: ResponsiveUtils.sp(48),
+          color: Theme.of(context).colorScheme.primary,
         ),
-        
-        SizedBox(height: ResponsiveUtils.hp(2)),
-        
-        // Title
+        SizedBox(height: ResponsiveUtils.hp(1)),
         Text(
           'Game Paused',
-          style: TextStyle(
-            fontSize: ResponsiveUtils.sp(24),
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
             fontWeight: FontWeight.bold,
-            color: Colors.white,
           ),
         ),
-        
-        SizedBox(height: ResponsiveUtils.hp(1)),
-        
-        // Subtitle
+        SizedBox(height: ResponsiveUtils.hp(0.5)),
         Text(
-          'Take a break and come back when ready',
-          style: TextStyle(
-            fontSize: ResponsiveUtils.sp(14),
-            color: Colors.white.withOpacity(0.7),
+          'Take a break or resume when ready',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
           textAlign: TextAlign.center,
         ),
@@ -257,76 +201,43 @@ class _PauseOverlayState extends State<PauseOverlay>
     );
   }
 
-  Widget _buildGameStats() {
+  Widget _buildGameStatistics() {
+    if (widget.gameStats == null) return const SizedBox.shrink();
+
+    final stats = widget.gameStats!;
+    
     return Container(
-      padding: EdgeInsets.all(ResponsiveUtils.wp(4)),
+      padding: EdgeInsets.all(ResponsiveUtils.getAdaptivePadding()),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.2),
-          width: 1,
-        ),
+        color: Theme.of(context).colorScheme.surfaceVariant,
+        borderRadius: BorderRadius.circular(AppConstants.cardBorderRadius),
       ),
       child: Column(
         children: [
           Text(
-            'Current Progress',
-            style: TextStyle(
-              fontSize: ResponsiveUtils.sp(16),
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+            'Current Session',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
             ),
           ),
-          
-          SizedBox(height: ResponsiveUtils.hp(2)),
-          
+          SizedBox(height: ResponsiveUtils.hp(1)),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildStatItem(
                 'Score',
-                widget.gameSession.currentScore,
-                Icons.star_rounded,
-                AppColors.warning,
+                '${stats['score'] ?? 0}',
+                Icons.stars,
               ),
               _buildStatItem(
                 'Level',
-                widget.gameSession.currentLevel,
-                Icons.trending_up_rounded,
-                AppColors.success,
+                '${stats['level'] ?? 1}',
+                Icons.trending_up,
               ),
               _buildStatItem(
                 'Lines',
-                widget.gameSession.linesCleared,
-                Icons.horizontal_rule_rounded,
-                AppColors.info,
-              ),
-            ],
-          ),
-          
-          SizedBox(height: ResponsiveUtils.hp(2)),
-          
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildStatItem(
-                'Combo',
-                widget.gameSession.comboCount,
-                Icons.local_fire_department_rounded,
-                AppColors.error,
-              ),
-              _buildStatItem(
-                'Time',
-                _formatDuration(widget.gameSession.actualPlayTime),
-                Icons.timer_rounded,
-                AppColors.primary,
-              ),
-              _buildStatItem(
-                'Blocks',
-                widget.gameSession.statistics.blocksPlaced,
-                Icons.apps_rounded,
-                AppColors.secondary,
+                '${stats['linesCleared'] ?? 0}',
+                Icons.horizontal_rule,
               ),
             ],
           ),
@@ -335,47 +246,26 @@ class _PauseOverlayState extends State<PauseOverlay>
     );
   }
 
-  Widget _buildStatItem(String label, dynamic value, IconData icon, Color color) {
+  Widget _buildStatItem(String label, String value, IconData icon) {
     return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            icon,
-            color: color,
-            size: ResponsiveUtils.sp(20),
+        Icon(
+          icon,
+          size: ResponsiveUtils.sp(20),
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        SizedBox(height: ResponsiveUtils.hp(0.5)),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.primary,
           ),
         ),
-        
-        SizedBox(height: ResponsiveUtils.hp(0.5)),
-        
-        value is int 
-            ? AnimatedCounter(
-                value: value,
-                style: TextStyle(
-                  fontSize: ResponsiveUtils.sp(16),
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              )
-            : Text(
-                value.toString(),
-                style: TextStyle(
-                  fontSize: ResponsiveUtils.sp(16),
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-        
         Text(
           label,
-          style: TextStyle(
-            fontSize: ResponsiveUtils.sp(12),
-            color: Colors.white.withOpacity(0.7),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
       ],
@@ -386,59 +276,46 @@ class _PauseOverlayState extends State<PauseOverlay>
     return Column(
       children: [
         // Resume button (primary action)
-        AnimatedBuilder(
-          animation: _pulseAnimation,
-          builder: (context, child) {
-            return Transform.scale(
-              scale: _pulseAnimation.value,
-              child: GradientButton.primary(
-                text: 'Resume Game',
-                icon: Icons.play_arrow_rounded,
-                onPressed: () {
-                  HapticFeedback.mediumImpact();
-                  widget.onResume?.call();
-                },
-                width: double.infinity,
-                height: ResponsiveUtils.hp(6),
-              ),
-            );
-          },
+        SizedBox(
+          width: double.infinity,
+          child: GradientButton(
+            text: 'Resume Game',
+            icon: Icons.play_arrow_rounded,
+            onPressed: _handleResume,
+            gradient: LinearGradient(
+              colors: [
+                Theme.of(context).colorScheme.primary,
+                Theme.of(context).colorScheme.secondary,
+              ],
+            ),
+            height: ResponsiveUtils.getButtonSize(),
+          ),
         ),
         
-        SizedBox(height: ResponsiveUtils.hp(2)),
+        SizedBox(height: ResponsiveUtils.hp(1.5)),
         
         // Secondary actions
         Row(
           children: [
-            // Settings button
             Expanded(
               child: GradientButton(
                 text: 'Settings',
                 icon: Icons.settings_rounded,
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  widget.onSettings?.call();
-                },
-                backgroundColor: Colors.white.withOpacity(0.1),
-                textColor: Colors.white,
-                height: ResponsiveUtils.hp(5),
+                onPressed: _handleSettings,
+                backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
+                textColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                height: ResponsiveUtils.getButtonSize() * 0.8,
               ),
             ),
-            
-            SizedBox(width: ResponsiveUtils.wp(3)),
-            
-            // Restart button
+            SizedBox(width: ResponsiveUtils.wp(2)),
             Expanded(
               child: GradientButton(
                 text: 'Restart',
                 icon: Icons.refresh_rounded,
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  _showRestartConfirmation();
-                },
-                backgroundColor: AppColors.warning.withOpacity(0.2),
-                textColor: AppColors.warning,
-                height: ResponsiveUtils.hp(5),
+                onPressed: () => _showConfirmationDialog('restart'),
+                backgroundColor: Theme.of(context).colorScheme.tertiary.withOpacity(0.2),
+                textColor: Theme.of(context).colorScheme.tertiary,
+                height: ResponsiveUtils.getButtonSize() * 0.8,
               ),
             ),
           ],
@@ -447,111 +324,204 @@ class _PauseOverlayState extends State<PauseOverlay>
         SizedBox(height: ResponsiveUtils.hp(1.5)),
         
         // Main menu button
-        GradientButton(
-          text: 'Main Menu',
-          icon: Icons.home_rounded,
-          onPressed: () {
-            HapticFeedback.lightImpact();
-            _showMainMenuConfirmation();
-          },
-          backgroundColor: AppColors.error.withOpacity(0.2),
-          textColor: AppColors.error,
+        SizedBox(
           width: double.infinity,
-          height: ResponsiveUtils.hp(5),
+          child: GradientButton(
+            text: 'Main Menu',
+            icon: Icons.home_rounded,
+            onPressed: () => _showConfirmationDialog('mainMenu'),
+            backgroundColor: Theme.of(context).colorScheme.error.withOpacity(0.2),
+            textColor: Theme.of(context).colorScheme.error,
+            height: ResponsiveUtils.getButtonSize() * 0.8,
+          ),
         ),
       ],
     );
   }
 
-  void _showRestartConfirmation() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.darkSurface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: const Text(
-          'Restart Game',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'Are you sure you want to restart? All current progress will be lost.',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Colors.white70),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              widget.onRestart?.call();
-            },
-            child: const Text(
-              'Restart',
-              style: TextStyle(color: AppColors.warning),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showMainMenuConfirmation() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.darkSurface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: const Text(
-          'Exit to Main Menu',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          'Your progress will be automatically saved. Are you sure you want to exit?',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Colors.white70),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              widget.onMainMenu?.call();
-            },
-            child: const Text(
-              'Exit',
-              style: TextStyle(color: AppColors.error),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatDuration(Duration duration) {
-    final hours = duration.inHours;
-    final minutes = duration.inMinutes.remainder(60);
-    final seconds = duration.inSeconds.remainder(60);
+  Widget _buildConfirmationDialog() {
+    final actionData = _getConfirmationData(_confirmationAction);
     
-    if (hours > 0) {
-      return '${hours}h ${minutes}m';
-    } else if (minutes > 0) {
-      return '${minutes}m ${seconds}s';
-    } else {
-      return '${seconds}s';
+    return Card(
+      margin: EdgeInsets.symmetric(
+        horizontal: ResponsiveUtils.wp(15),
+        vertical: ResponsiveUtils.hp(30),
+      ),
+      child: Container(
+        padding: EdgeInsets.all(ResponsiveUtils.getAdaptivePadding()),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              actionData['icon'] as IconData,
+              size: ResponsiveUtils.sp(40),
+              color: actionData['color'] as Color,
+            ),
+            SizedBox(height: ResponsiveUtils.hp(2)),
+            Text(
+              actionData['title'] as String,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: ResponsiveUtils.hp(1)),
+            Text(
+              actionData['message'] as String,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: ResponsiveUtils.hp(3)),
+            Row(
+              children: [
+                Expanded(
+                  child: GradientButton(
+                    text: 'Cancel',
+                    onPressed: _hideConfirmationDialog,
+                    backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
+                    textColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                    height: ResponsiveUtils.getButtonSize() * 0.8,
+                  ),
+                ),
+                SizedBox(width: ResponsiveUtils.wp(3)),
+                Expanded(
+                  child: GradientButton(
+                    text: actionData['confirmText'] as String,
+                    onPressed: () => _executeConfirmedAction(_confirmationAction),
+                    backgroundColor: (actionData['color'] as Color).withOpacity(0.2),
+                    textColor: actionData['color'] as Color,
+                    height: ResponsiveUtils.getButtonSize() * 0.8,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Map<String, dynamic> _getConfirmationData(String action) {
+    switch (action) {
+      case 'restart':
+        return {
+          'icon': Icons.refresh_rounded,
+          'color': Theme.of(context).colorScheme.tertiary,
+          'title': 'Restart Game',
+          'message': 'Are you sure you want to restart?\nAll current progress will be lost.',
+          'confirmText': 'Restart',
+        };
+      case 'mainMenu':
+        return {
+          'icon': Icons.home_rounded,
+          'color': Theme.of(context).colorScheme.error,
+          'title': 'Exit to Main Menu',
+          'message': 'Your progress will be automatically saved.\nAre you sure you want to exit?',
+          'confirmText': 'Exit',
+        };
+      default:
+        return {
+          'icon': Icons.help_outline,
+          'color': Theme.of(context).colorScheme.primary,
+          'title': 'Confirm Action',
+          'message': 'Are you sure you want to proceed?',
+          'confirmText': 'Confirm',
+        };
     }
+  }
+
+  void _handleResume() {
+    _playButtonSound();
+    HapticFeedback.lightImpact();
+    _closeOverlay();
+    widget.onResume?.call();
+  }
+
+  void _handleSettings() {
+    _playButtonSound();
+    HapticFeedback.lightImpact();
+    widget.onSettings?.call();
+  }
+
+  void _showConfirmationDialog(String action) {
+    _playButtonSound();
+    HapticFeedback.lightImpact();
+    
+    setState(() {
+      _showConfirmation = true;
+      _confirmationAction = action;
+    });
+  }
+
+  void _hideConfirmationDialog() {
+    _playButtonSound();
+    HapticFeedback.lightImpact();
+    
+    setState(() {
+      _showConfirmation = false;
+      _confirmationAction = '';
+    });
+  }
+
+  void _executeConfirmedAction(String action) {
+    _playButtonSound();
+    HapticFeedback.mediumImpact();
+    
+    switch (action) {
+      case 'restart':
+        _closeOverlay();
+        widget.onRestart?.call();
+        break;
+      case 'mainMenu':
+        _closeOverlay();
+        widget.onMainMenu?.call();
+        break;
+    }
+  }
+
+  Future<void> _closeOverlay() async {
+    await _startExitAnimation();
+    if (!_isDisposed && mounted) {
+      context.read<UICubit>().hidePauseOverlay();
+    }
+  }
+
+  void _playButtonSound() {
+    try {
+      _audioService.playSfx('ui_click');
+    } catch (e) {
+      // Silently handle audio errors
+    }
+  }
+}
+
+/// Extension for easy access to pause overlay
+extension PauseOverlayExtension on BuildContext {
+  /// Show pause overlay
+  void showPauseOverlay({
+    VoidCallback? onResume,
+    VoidCallback? onRestart,
+    VoidCallback? onMainMenu,
+    VoidCallback? onSettings,
+    bool showStatistics = true,
+    Map<String, dynamic>? gameStats,
+  }) {
+    final overlay = PauseOverlay(
+      onResume: onResume,
+      onRestart: onRestart,
+      onMainMenu: onMainMenu,
+      onSettings: onSettings,
+      showStatistics: showStatistics,
+      gameStats: gameStats,
+    );
+
+    showDialog(
+      context: this,
+      barrierDismissible: false,
+      barrierColor: Colors.transparent,
+      builder: (context) => overlay,
+    );
   }
 }

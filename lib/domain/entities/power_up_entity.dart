@@ -1,432 +1,585 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
+import '../../core/constants/game_constants.dart';
 
-enum PowerUpType {
-  shuffle,
-  undo,
-  hint,
-  bomb,
-  freeze, hammer, lineClear,
-}
-
-enum PowerUpRarity {
-  common,
-  rare,
-  epic,
-
-}
-
+/// PowerUp represents a special ability that can be used during gameplay.
+/// Follows Clean Architecture principles with immutable data and clear interfaces.
+/// Optimized for performance with efficient equality checks and minimal memory usage.
 class PowerUp extends Equatable {
+  /// Unique identifier for this power-up
+  final String id;
+  
+  /// Type of power-up
   final PowerUpType type;
-  final String name;
-  final String description;
-  final String icon;
+  
+  /// Rarity level of the power-up
   final PowerUpRarity rarity;
+  
+  /// Duration for time-based power-ups (null for instant effects)
+  final Duration? duration;
+  
+  /// Cooldown time before power-up can be used again
+  final Duration cooldown;
+  
+  /// Cost in coins to purchase/use
   final int cost;
-  final Duration? cooldown;
-  final int maxUses;
-  final Color color;
+  
+  /// Whether this power-up is currently active
+  final bool isActive;
+  
+  /// Remaining duration if active
+  final Duration? remainingDuration;
+  
+  /// Timestamp when power-up was acquired
+  final DateTime acquiredAt;
+  
+  /// Timestamp when power-up was last used
+  final DateTime? lastUsedAt;
+  
+  /// Number of uses remaining (-1 for unlimited)
+  final int usesRemaining;
+  
+  /// Custom properties for special power-ups
   final Map<String, dynamic> properties;
-  
+
   const PowerUp({
+    required this.id,
     required this.type,
-    required this.name,
-    required this.description,
-    required this.icon,
     this.rarity = PowerUpRarity.common,
-    required this.cost,
-    this.cooldown,
-    this.maxUses = 1,
-    required this.color,
-    this.properties = const {}, required String id,
+    this.duration,
+    this.cooldown = const Duration(seconds: 30),
+    this.cost = 0,
+    this.isActive = false,
+    this.remainingDuration,
+    required this.acquiredAt,
+    this.lastUsedAt,
+    this.usesRemaining = 1,
+    this.properties = const {},
   });
-  
-  // Pre-defined power-ups
-  static const Map<PowerUpType, PowerUp> definitions = {
-    PowerUpType.shuffle: PowerUp(
-      type: PowerUpType.shuffle,
-      name: 'Shuffle',
-      description: 'Replace current blocks with new ones',
-      icon: '🔄',
-      rarity: PowerUpRarity.common,
-      cost: 75,
-      color: Colors.blue,
-      properties: {
-        'generateNewBlocks': true,
-        'clearCurrentBlocks': true,
-      }, id: '',
-    ),
-    
-    PowerUpType.undo: PowerUp(
-      type: PowerUpType.undo,
-      name: 'Undo',
-      description: 'Undo your last move',
-      icon: '↩️',
-      rarity: PowerUpRarity.common,
-      cost: 50,
-      color: Colors.orange,
-      properties: {
-        'stepsBack': 1,
-        'restoreScore': true,
-      }, id: '',
-    ),
-    
-    PowerUpType.hint: PowerUp(
-      type: PowerUpType.hint,
-      name: 'Hint',
-      description: 'Show the best placement for a block',
-      icon: '💡',
-      rarity: PowerUpRarity.common,
-      cost: 25,
-      color: Colors.yellow,
-      properties: {
-        'showOptimalPlacement': true,
-        'highlightDuration': 3000,
-      }, id: '',
-    ),
-    
-    PowerUpType.bomb: PowerUp(
-      type: PowerUpType.bomb,
-      name: 'Bomb',
-      description: 'Clear a 3x3 area on the grid',
-      icon: '💣',
-      rarity: PowerUpRarity.rare,
-      cost: 100,
-      cooldown: Duration(seconds: 60),
-      color: Colors.red,
-      properties: {
-        'explosionRadius': 3,
-        'clearBlocks': true,
-      }, id: 'bomb',
-      
-    ),
-    
-    PowerUpType.freeze: PowerUp(
-      type: PowerUpType.freeze,
-      name: 'Freeze',
-      description: 'Pause time to think about your move',
-      icon: '❄️',
-      rarity: PowerUpRarity.epic,
-      cost: 150,
-      cooldown: Duration(seconds: 30),
-      color: Colors.lightBlue,
-      properties: {
-        'freezeDuration': 10000,
-        'pauseTimer': true,
-      }, id: '',
-    ),
-  };
-  
-  // Copy with modifications
-  PowerUp copyWith({
-    PowerUpType? type,
-    String? name,
-    String? description,
-    String? icon,
+
+  /// Create a power-up with default values for type
+  factory PowerUp.create({
+    required PowerUpType type,
     PowerUpRarity? rarity,
-    int? cost,
+    Map<String, dynamic>? properties,
+  }) {
+    final config = _getPowerUpConfig(type);
+    
+    return PowerUp(
+      id: _generateId(),
+      type: type,
+      rarity: rarity ?? config['rarity'],
+      duration: config['duration'],
+      cooldown: config['cooldown'],
+      cost: config['cost'],
+      acquiredAt: DateTime.now(),
+      usesRemaining: config['uses'],
+      properties: properties ?? {},
+    );
+  }
+
+  /// Create a copy with updated values
+  PowerUp copyWith({
+    String? id,
+    PowerUpType? type,
+    PowerUpRarity? rarity,
+    Duration? duration,
     Duration? cooldown,
-    int? maxUses,
-    Color? color,
+    int? cost,
+    bool? isActive,
+    Duration? remainingDuration,
+    DateTime? acquiredAt,
+    DateTime? lastUsedAt,
+    int? usesRemaining,
     Map<String, dynamic>? properties,
   }) {
     return PowerUp(
+      id: id ?? this.id,
       type: type ?? this.type,
-      name: name ?? this.name,
-      description: description ?? this.description,
-      icon: icon ?? this.icon,
       rarity: rarity ?? this.rarity,
-      cost: cost ?? this.cost,
+      duration: duration ?? this.duration,
       cooldown: cooldown ?? this.cooldown,
-      maxUses: maxUses ?? this.maxUses,
-      color: color ?? this.color,
-      properties: properties ?? this.properties, id: '',
+      cost: cost ?? this.cost,
+      isActive: isActive ?? this.isActive,
+      remainingDuration: remainingDuration ?? this.remainingDuration,
+      acquiredAt: acquiredAt ?? this.acquiredAt,
+      lastUsedAt: lastUsedAt ?? this.lastUsedAt,
+      usesRemaining: usesRemaining ?? this.usesRemaining,
+      properties: properties ?? Map.from(this.properties),
     );
   }
-  
-  // Properties
-  bool get hasCooldown => cooldown != null;
-  bool get isLimitedUse => maxUses > 0;
-  bool get isInstantUse => cooldown == null;
-  
-  String get rarityName {
-    return rarity.name.substring(0, 1).toUpperCase() + rarity.name.substring(1);
-  }
-  
-  Color get rarityColor {
-    switch (rarity) {
-      case PowerUpRarity.common:
-        return Colors.grey;
-      case PowerUpRarity.rare:
-        return Colors.blue;
-      case PowerUpRarity.epic:
-        return Colors.purple;
-    }
-  }
-  
-  // Get property value
-  T? getProperty<T>(String key, [T? defaultValue]) {
-    return properties[key] as T? ?? defaultValue;
-  }
-  
-  // Effect descriptions
-  String get effectDescription {
-    switch (type) {
-      case PowerUpType.shuffle:
-        return 'Removes all current blocks and generates new ones';
-      case PowerUpType.undo:
-        return 'Reverts the game state to before your last move';
-      case PowerUpType.hint:
-        return 'Highlights the optimal position for placing a block';
-      case PowerUpType.bomb:
-        return 'Destroys blocks in a ${getProperty('explosionRadius', 3)}x${getProperty('explosionRadius', 3)} area';
-      case PowerUpType.freeze:
-        return 'Pauses all timers for ${getProperty('freezeDuration', 10000)! ~/ 1000} seconds';
-      case PowerUpType.hammer:
-        // TODO: Handle this case.
-        throw UnimplementedError();
-      case PowerUpType.lineClear:
-        // TODO: Handle this case.
-        throw UnimplementedError();
-    }
-  }
-  
-  // Usage validation
-  bool canBeUsed(Map<String, dynamic> gameState) {
-    switch (type) {
-      case PowerUpType.shuffle:
-        return gameState['hasActiveBlocks'] == true;
-      
-      case PowerUpType.undo:
-        return gameState['canUndo'] == true;
-      
-      case PowerUpType.hint:
-        return gameState['hasActiveBlocks'] == true && 
-               gameState['hasValidMoves'] == true;
-      
-      case PowerUpType.bomb:
-        return gameState['hasPlacedBlocks'] == true;
-      
-      case PowerUpType.freeze:
-        return gameState['isTimerRunning'] == true;
-      
-      default:
-        return true;
-    }
-  }
-  
-  // Effect duration (if applicable)
-  Duration? get effectDuration {
-    switch (type) {
-      case PowerUpType.hint:
-        return Duration(milliseconds: getProperty('highlightDuration', 3000));
-      case PowerUpType.freeze:
-        return Duration(milliseconds: getProperty('freezeDuration', 10000));
-      default:
-        return null;
-    }
-  }
-  
-  @override
-  List<Object?> get props => [
-    type,
-    name,
-    description,
-    icon,
-    rarity,
-    cost,
-    cooldown,
-    maxUses,
-    color,
-    properties,
-  ];
-  
-  @override
-  String toString() {
-    return 'PowerUp(type: $type, name: $name, cost: $cost)';
-  }
-}
 
-// Power-up inventory item
-class PowerUpInventoryItem extends Equatable {
-  final PowerUp powerUp;
-  final int quantity;
-  final DateTime? lastUsed;
-  final int timesUsed;
-  
-  const PowerUpInventoryItem({
-    required this.powerUp,
-    this.quantity = 0,
-    this.lastUsed,
-    this.timesUsed = 0,
-  });
-  
-  // Copy with modifications
-  PowerUpInventoryItem copyWith({
-    PowerUp? powerUp,
-    int? quantity,
-    DateTime? lastUsed,
-    int? timesUsed,
-  }) {
-    return PowerUpInventoryItem(
-      powerUp: powerUp ?? this.powerUp,
-      quantity: quantity ?? this.quantity,
-      lastUsed: lastUsed ?? this.lastUsed,
-      timesUsed: timesUsed ?? this.timesUsed,
-    );
-  }
-  
-  // Operations
-  PowerUpInventoryItem use() {
-    if (quantity <= 0) return this;
-    
+  /// Activate the power-up
+  PowerUp activate() {
     return copyWith(
-      quantity: quantity - 1,
-      lastUsed: DateTime.now(),
-      timesUsed: timesUsed + 1,
+      isActive: true,
+      lastUsedAt: DateTime.now(),
+      remainingDuration: duration,
+      usesRemaining: usesRemaining > 0 ? usesRemaining - 1 : usesRemaining,
     );
   }
-  
-  PowerUpInventoryItem add(int amount) {
-    return copyWith(quantity: quantity + amount);
-  }
-  
-  // Status checks
-  bool get isEmpty => quantity <= 0;
-  bool get hasItems => quantity > 0;
-  
-  bool get isOnCooldown {
-    if (powerUp.cooldown == null || lastUsed == null) return false;
-    
-    final timeSinceLastUse = DateTime.now().difference(lastUsed!);
-    return timeSinceLastUse < powerUp.cooldown!;
-  }
-  
-  Duration? get remainingCooldown {
-    if (!isOnCooldown) return null;
-    
-    final timeSinceLastUse = DateTime.now().difference(lastUsed!);
-    return powerUp.cooldown! - timeSinceLastUse;
-  }
-  
-  bool canUse(Map<String, dynamic> gameState) {
-    return hasItems && 
-           !isOnCooldown && 
-           powerUp.canBeUsed(gameState);
-  }
-  
-  @override
-  List<Object?> get props => [powerUp, quantity, lastUsed, timesUsed];
-}
 
-// Power-up manager for handling inventory and usage
-class PowerUpManager {
-  final Map<PowerUpType, PowerUpInventoryItem> _inventory;
-  
-  PowerUpManager(this._inventory);
-  
-  // Factory constructor with default inventory
-  factory PowerUpManager.withDefaults() {
-    return PowerUpManager({
-      PowerUpType.shuffle: PowerUpInventoryItem(
-        powerUp: PowerUp.definitions[PowerUpType.shuffle]!,
-        quantity: 2,
-      ),
-      PowerUpType.undo: PowerUpInventoryItem(
-        powerUp: PowerUp.definitions[PowerUpType.undo]!,
-        quantity: 3,
-      ),
-      PowerUpType.hint: PowerUpInventoryItem(
-        powerUp: PowerUp.definitions[PowerUpType.hint]!,
-        quantity: 1,
-      ),
-    });
+  /// Deactivate the power-up
+  PowerUp deactivate() {
+    return copyWith(
+      isActive: false,
+      remainingDuration: null,
+    );
   }
-  
-  // Inventory operations
-  PowerUpInventoryItem? getItem(PowerUpType type) => _inventory[type];
-  
-  int getQuantity(PowerUpType type) => _inventory[type]?.quantity ?? 0;
-  
-  bool hasItem(PowerUpType type) => getQuantity(type) > 0;
-  
-  bool canUse(PowerUpType type, Map<String, dynamic> gameState) {
-    final item = _inventory[type];
-    return item?.canUse(gameState) ?? false;
-  }
-  
-  // Use power-up
-  bool usePowerUp(PowerUpType type) {
-    final item = _inventory[type];
-    if (item == null || !item.hasItems) return false;
+
+  /// Update remaining duration
+  PowerUp updateDuration(Duration remaining) {
+    if (remaining.inMilliseconds <= 0) {
+      return deactivate();
+    }
     
-    _inventory[type] = item.use();
+    return copyWith(remainingDuration: remaining);
+  }
+
+  /// Check if power-up can be used
+  bool get canUse {
+    if (usesRemaining == 0) return false;
+    if (isActive && !type.canStackWithSelf) return false;
+    
+    if (lastUsedAt != null) {
+      final timeSinceLastUse = DateTime.now().difference(lastUsedAt!);
+      if (timeSinceLastUse < cooldown) return false;
+    }
+    
     return true;
   }
-  
-  // Add power-up
-  void addPowerUp(PowerUpType type, int quantity) {
-    final item = _inventory[type];
-    if (item != null) {
-      _inventory[type] = item.add(quantity);
-    } else {
-      final powerUp = PowerUp.definitions[type];
-      if (powerUp != null) {
-        _inventory[type] = PowerUpInventoryItem(
-          powerUp: powerUp,
-          quantity: quantity,
-        );
-      }
+
+  /// Get remaining cooldown time
+  Duration get remainingCooldown {
+    if (lastUsedAt == null) return Duration.zero;
+    
+    final timeSinceLastUse = DateTime.now().difference(lastUsedAt!);
+    final remaining = cooldown - timeSinceLastUse;
+    
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  /// Check if power-up is expired
+  bool get isExpired {
+    if (usesRemaining == 0) return true;
+    if (duration == null) return false;
+    
+    final ageLimit = const Duration(hours: 24); // Power-ups expire after 24 hours
+    final age = DateTime.now().difference(acquiredAt);
+    
+    return age > ageLimit;
+  }
+
+  /// Get display name
+  String get displayName => type.displayName;
+
+  /// Get description
+  String get description => type.description;
+
+  /// Get icon
+  IconData get icon => type.icon;
+
+  /// Get color based on rarity
+  Color get color => rarity.color;
+
+  /// Convert to JSON for serialization
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'type': type.name,
+      'rarity': rarity.name,
+      'duration': duration?.inMilliseconds,
+      'cooldown': cooldown.inMilliseconds,
+      'cost': cost,
+      'isActive': isActive,
+      'remainingDuration': remainingDuration?.inMilliseconds,
+      'acquiredAt': acquiredAt.toIso8601String(),
+      'lastUsedAt': lastUsedAt?.toIso8601String(),
+      'usesRemaining': usesRemaining,
+      'properties': properties,
+    };
+  }
+
+  /// Create from JSON
+  factory PowerUp.fromJson(Map<String, dynamic> json) {
+    return PowerUp(
+      id: json['id'] as String,
+      type: PowerUpType.values.firstWhere((t) => t.name == json['type']),
+      rarity: PowerUpRarity.values.firstWhere(
+        (r) => r.name == json['rarity'],
+        orElse: () => PowerUpRarity.common,
+      ),
+      duration: json['duration'] != null 
+          ? Duration(milliseconds: json['duration'])
+          : null,
+      cooldown: Duration(milliseconds: json['cooldown'] ?? 30000),
+      cost: json['cost'] as int? ?? 0,
+      isActive: json['isActive'] as bool? ?? false,
+      remainingDuration: json['remainingDuration'] != null 
+          ? Duration(milliseconds: json['remainingDuration'])
+          : null,
+      acquiredAt: DateTime.parse(json['acquiredAt'] as String),
+      lastUsedAt: json['lastUsedAt'] != null 
+          ? DateTime.parse(json['lastUsedAt'] as String)
+          : null,
+      usesRemaining: json['usesRemaining'] as int? ?? 1,
+      properties: Map<String, dynamic>.from(json['properties'] ?? {}),
+    );
+  }
+
+  /// Generate unique ID for power-up
+  static String _generateId() {
+    return 'powerup_${DateTime.now().millisecondsSinceEpoch}';
+  }
+
+  /// Get configuration for power-up type
+  static Map<String, dynamic> _getPowerUpConfig(PowerUpType type) {
+    switch (type) {
+      case PowerUpType.clearLine:
+        return {
+          'rarity': PowerUpRarity.common,
+          'duration': null,
+          'cooldown': const Duration(seconds: 30),
+          'cost': GameConstants.powerUpCosts['clearLine'] ?? 50,
+          'uses': 1,
+        };
+      case PowerUpType.destroyBlock:
+        return {
+          'rarity': PowerUpRarity.common,
+          'duration': null,
+          'cooldown': const Duration(seconds: 20),
+          'cost': GameConstants.powerUpCosts['destroyBlock'] ?? 30,
+          'uses': 1,
+        };
+      case PowerUpType.doubleScore:
+        return {
+          'rarity': PowerUpRarity.rare,
+          'duration': Duration(seconds: GameConstants.powerUpDurations['doubleScore']?.toInt() ?? 30),
+          'cooldown': const Duration(minutes: 2),
+          'cost': GameConstants.powerUpCosts['doubleScore'] ?? 60,
+          'uses': 1,
+        };
+      case PowerUpType.slowTime:
+        return {
+          'rarity': PowerUpRarity.rare,
+          'duration': Duration(seconds: GameConstants.powerUpDurations['slowTime']?.toInt() ?? 15),
+          'cooldown': const Duration(minutes: 1),
+          'cost': 40,
+          'uses': 1,
+        };
+      case PowerUpType.extraTime:
+        return {
+          'rarity': PowerUpRarity.uncommon,
+          'duration': Duration(seconds: GameConstants.powerUpDurations['extraTime']?.toInt() ?? 60),
+          'cooldown': const Duration(minutes: 3),
+          'cost': GameConstants.powerUpCosts['extraTime'] ?? 40,
+          'uses': 1,
+        };
+      case PowerUpType.perfectClear:
+        return {
+          'rarity': PowerUpRarity.legendary,
+          'duration': null,
+          'cooldown': const Duration(minutes: 5),
+          'cost': GameConstants.powerUpCosts['perfectClear'] ?? 100,
+          'uses': 1,
+        };
+      case PowerUpType.ghostMode:
+        return {
+          'rarity': PowerUpRarity.epic,
+          'duration': const Duration(seconds: 10),
+          'cooldown': const Duration(minutes: 2),
+          'cost': 80,
+          'uses': 1,
+        };
+      case PowerUpType.magneticBlocks:
+        return {
+          'rarity': PowerUpRarity.uncommon,
+          'duration': const Duration(seconds: 20),
+          'cooldown': const Duration(seconds: 45),
+          'cost': 35,
+          'uses': 1,
+        };
     }
   }
-  
-  // Get all available power-ups
-  List<PowerUpInventoryItem> get availableItems {
-    return _inventory.values.where((item) => item.hasItems).toList();
+
+  @override
+  List<Object?> get props => [
+        id,
+        type,
+        rarity,
+        duration,
+        cooldown,
+        cost,
+        isActive,
+        remainingDuration,
+        acquiredAt,
+        lastUsedAt,
+        usesRemaining,
+        properties,
+      ];
+}
+
+/// Power-up type enumeration
+enum PowerUpType {
+  clearLine,
+  destroyBlock,
+  doubleScore,
+  slowTime,
+  extraTime,
+  perfectClear,
+  ghostMode,
+  magneticBlocks;
+
+  String get name => toString().split('.').last;
+
+  String get displayName {
+    switch (this) {
+      case PowerUpType.clearLine:
+        return 'Clear Line';
+      case PowerUpType.destroyBlock:
+        return 'Destroy Block';
+      case PowerUpType.doubleScore:
+        return 'Double Score';
+      case PowerUpType.slowTime:
+        return 'Slow Time';
+      case PowerUpType.extraTime:
+        return 'Extra Time';
+      case PowerUpType.perfectClear:
+        return 'Perfect Clear';
+      case PowerUpType.ghostMode:
+        return 'Ghost Mode';
+      case PowerUpType.magneticBlocks:
+        return 'Magnetic Blocks';
+    }
   }
-  
-  // Get all power-ups (including empty ones)
-  List<PowerUpInventoryItem> get allItems {
-    return PowerUp.definitions.keys.map((type) {
-      return _inventory[type] ?? PowerUpInventoryItem(
-        powerUp: PowerUp.definitions[type]!,
-        quantity: 0,
-      );
-    }).toList();
+
+  String get description {
+    switch (this) {
+      case PowerUpType.clearLine:
+        return 'Instantly clear the bottom line';
+      case PowerUpType.destroyBlock:
+        return 'Remove any single block from the grid';
+      case PowerUpType.doubleScore:
+        return 'Double all points for 30 seconds';
+      case PowerUpType.slowTime:
+        return 'Slow down falling blocks for 15 seconds';
+      case PowerUpType.extraTime:
+        return 'Add extra time to the timer';
+      case PowerUpType.perfectClear:
+        return 'Clear the entire grid instantly';
+      case PowerUpType.ghostMode:
+        return 'Blocks can pass through others briefly';
+      case PowerUpType.magneticBlocks:
+        return 'Blocks automatically snap to best position';
+    }
   }
-  
-  // Purchase validation
-  bool canAfford(PowerUpType type, int coins) {
-    final powerUp = PowerUp.definitions[type];
-    return powerUp != null && coins >= powerUp.cost;
+
+  IconData get icon {
+    switch (this) {
+      case PowerUpType.clearLine:
+        return Icons.horizontal_rule;
+      case PowerUpType.destroyBlock:
+        return Icons.delete_forever;
+      case PowerUpType.doubleScore:
+        return Icons.star;
+      case PowerUpType.slowTime:
+        return Icons.schedule;
+      case PowerUpType.extraTime:
+        return Icons.access_time;
+      case PowerUpType.perfectClear:
+        return Icons.clear_all;
+      case PowerUpType.ghostMode:
+        return Icons.visibility_off;
+      case PowerUpType.magneticBlocks:
+        return Icons.my_location;
+    }
   }
-  
-  // Cooldown management
-  Map<PowerUpType, Duration> getActiveCooldowns() {
-    final cooldowns = <PowerUpType, Duration>{};
+
+  bool get canStackWithSelf {
+    switch (this) {
+      case PowerUpType.clearLine:
+      case PowerUpType.destroyBlock:
+      case PowerUpType.perfectClear:
+        return true; // Instant effects can be used multiple times
+      case PowerUpType.doubleScore:
+      case PowerUpType.slowTime:
+      case PowerUpType.extraTime:
+      case PowerUpType.ghostMode:
+      case PowerUpType.magneticBlocks:
+        return false; // Duration-based effects don't stack
+    }
+  }
+
+  PowerUpCategory get category {
+    switch (this) {
+      case PowerUpType.clearLine:
+      case PowerUpType.destroyBlock:
+      case PowerUpType.perfectClear:
+        return PowerUpCategory.destructive;
+      case PowerUpType.doubleScore:
+        return PowerUpCategory.scoring;
+      case PowerUpType.slowTime:
+      case PowerUpType.extraTime:
+        return PowerUpCategory.time;
+      case PowerUpType.ghostMode:
+      case PowerUpType.magneticBlocks:
+        return PowerUpCategory.movement;
+    }
+  }
+}
+
+/// Power-up rarity enumeration
+enum PowerUpRarity {
+  common,
+  uncommon,
+  rare,
+  epic,
+  legendary;
+
+  String get name => toString().split('.').last;
+
+  String get displayName {
+    switch (this) {
+      case PowerUpRarity.common:
+        return 'Common';
+      case PowerUpRarity.uncommon:
+        return 'Uncommon';
+      case PowerUpRarity.rare:
+        return 'Rare';
+      case PowerUpRarity.epic:
+        return 'Epic';
+      case PowerUpRarity.legendary:
+        return 'Legendary';
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case PowerUpRarity.common:
+        return const Color(0xFF9E9E9E); // Gray
+      case PowerUpRarity.uncommon:
+        return const Color(0xFF4CAF50); // Green
+      case PowerUpRarity.rare:
+        return const Color(0xFF2196F3); // Blue
+      case PowerUpRarity.epic:
+        return const Color(0xFF9C27B0); // Purple
+      case PowerUpRarity.legendary:
+        return const Color(0xFFFF9800); // Orange
+    }
+  }
+
+  double get dropRate {
+    switch (this) {
+      case PowerUpRarity.common:
+        return 0.50; // 50%
+      case PowerUpRarity.uncommon:
+        return 0.30; // 30%
+      case PowerUpRarity.rare:
+        return 0.15; // 15%
+      case PowerUpRarity.epic:
+        return 0.04; // 4%
+      case PowerUpRarity.legendary:
+        return 0.01; // 1%
+    }
+  }
+}
+
+/// Power-up category enumeration
+enum PowerUpCategory {
+  destructive,
+  scoring,
+  time,
+  movement;
+
+  String get name => toString().split('.').last;
+
+  String get displayName {
+    switch (this) {
+      case PowerUpCategory.destructive:
+        return 'Destructive';
+      case PowerUpCategory.scoring:
+        return 'Scoring';
+      case PowerUpCategory.time:
+        return 'Time';
+      case PowerUpCategory.movement:
+        return 'Movement';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case PowerUpCategory.destructive:
+        return Icons.delete_forever;
+      case PowerUpCategory.scoring:
+        return Icons.star;
+      case PowerUpCategory.time:
+        return Icons.access_time;
+      case PowerUpCategory.movement:
+        return Icons.open_with;
+    }
+  }
+}
+
+/// Power-up collection for managing multiple power-ups
+class PowerUpCollection extends Equatable {
+  final List<PowerUp> powerUps;
+  final int maxCapacity;
+
+  const PowerUpCollection({
+    this.powerUps = const [],
+    this.maxCapacity = 5,
+  });
+
+  /// Add a power-up to the collection
+  PowerUpCollection add(PowerUp powerUp) {
+    final newList = List<PowerUp>.from(powerUps);
     
-    for (final entry in _inventory.entries) {
-      final remainingCooldown = entry.value.remainingCooldown;
-      if (remainingCooldown != null) {
-        cooldowns[entry.key] = remainingCooldown;
-      }
+    if (newList.length >= maxCapacity) {
+      // Remove oldest common power-up to make room
+      final oldestCommon = newList
+          .where((p) => p.rarity == PowerUpRarity.common)
+          .reduce((a, b) => a.acquiredAt.isBefore(b.acquiredAt) ? a : b);
+      newList.remove(oldestCommon);
     }
     
-    return cooldowns;
+    newList.add(powerUp);
+    return PowerUpCollection(powerUps: newList, maxCapacity: maxCapacity);
   }
-  
-  // Statistics
-  int get totalPowerUps => _inventory.values
-      .map((item) => item.quantity)
-      .fold(0, (sum, quantity) => sum + quantity);
-  
-  int get totalUsed => _inventory.values
-      .map((item) => item.timesUsed)
-      .fold(0, (sum, used) => sum + used);
-  
-  Map<PowerUpType, int> get usageStats => Map.fromEntries(
-    _inventory.entries.map((entry) => 
-      MapEntry(entry.key, entry.value.timesUsed)
-    )
-  );
+
+  /// Remove a power-up from the collection
+  PowerUpCollection remove(String powerUpId) {
+    final newList = powerUps.where((p) => p.id != powerUpId).toList();
+    return PowerUpCollection(powerUps: newList, maxCapacity: maxCapacity);
+  }
+
+  /// Get power-ups by type
+  List<PowerUp> getByType(PowerUpType type) {
+    return powerUps.where((p) => p.type == type).toList();
+  }
+
+  /// Get power-ups by category
+  List<PowerUp> getByCategory(PowerUpCategory category) {
+    return powerUps.where((p) => p.type.category == category).toList();
+  }
+
+  /// Get active power-ups
+  List<PowerUp> get activePowerUps {
+    return powerUps.where((p) => p.isActive).toList();
+  }
+
+  /// Get usable power-ups
+  List<PowerUp> get usablePowerUps {
+    return powerUps.where((p) => p.canUse).toList();
+  }
+
+  /// Check if collection is full
+  bool get isFull => powerUps.length >= maxCapacity;
+
+  /// Get total value of all power-ups
+  int get totalValue {
+    return powerUps.fold(0, (sum, p) => sum + p.cost);
+  }
+
+  @override
+  List<Object> get props => [powerUps, maxCapacity];
 }
