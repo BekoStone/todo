@@ -1,141 +1,13 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:developer' as developer;
 import 'package:bloc/bloc.dart';
-import 'package:equatable/equatable.dart';
-import 'package:puzzle_box/domain/entities/game_session_entity.dart';
-import 'package:puzzle_box/domain/entities/block_entity.dart';
-import 'package:puzzle_box/domain/entities/power_up_entity.dart';
-import 'package:puzzle_box/domain/usecases/achievement_usecases_dart.dart';
-import 'package:puzzle_box/domain/usecases/game_usecases.dart';
 import 'package:puzzle_box/core/constants/app_constants.dart';
-
-// Game state status enumeration
-enum GameStateStatus {
-  initial,
-  loading,
-  playing,
-  paused,
-  gameOver,
-  error,
-}
-
-// Game state model
-class GameState extends Equatable {
-  final GameStateStatus status;
-  final GameSession? currentSession;
-  final int score;
-  final int level;
-  final int linesCleared;
-  final int comboCount;
-  final int maxCombo;
-  final int streakCount;
-  final int maxStreak;
-  final List<Block> activeBlocks;
-  final List<List<int>> grid;
-  final Duration sessionDuration;
-  final int remainingUndos;
-  final int remainingHints;
-  final String? errorMessage;
-  final SessionStatistics? sessionData;
-  final bool isFirstGame;
-  final DateTime? lastMoveTime;
-  final Map<String, int> powerUpCounts;
-
-  const GameState({
-    this.status = GameStateStatus.initial,
-    this.currentSession,
-    this.score = 0,
-    this.level = 1,
-    this.linesCleared = 0,
-    this.comboCount = 0,
-    this.maxCombo = 0,
-    this.streakCount = 0,
-    this.maxStreak = 0,
-    this.activeBlocks = const [],
-    this.grid = const [],
-    this.sessionDuration = Duration.zero,
-    this.remainingUndos = 3,
-    this.remainingHints = 3,
-    this.errorMessage,
-    this.sessionData,
-    this.isFirstGame = false,
-    this.lastMoveTime,
-    this.powerUpCounts = const {},
-  });
-
-  bool get isPlaying => status == GameStateStatus.playing;
-  bool get isPaused => status == GameStateStatus.paused;
-  bool get isGameOver => status == GameStateStatus.gameOver;
-  bool get hasError => status == GameStateStatus.error;
-  bool get isLoading => status == GameStateStatus.loading;
-
-  GameState copyWith({
-    GameStateStatus? status,
-    GameSession? currentSession,
-    int? score,
-    int? level,
-    int? linesCleared,
-    int? comboCount,
-    int? maxCombo,
-    int? streakCount,
-    int? maxStreak,
-    List<Block>? activeBlocks,
-    List<List<int>>? grid,
-    Duration? sessionDuration,
-    int? remainingUndos,
-    int? remainingHints,
-    String? errorMessage,
-    SessionStatistics? sessionData,
-    bool? isFirstGame,
-    DateTime? lastMoveTime,
-    Map<String, int>? powerUpCounts,
-  }) {
-    return GameState(
-      status: status ?? this.status,
-      currentSession: currentSession ?? this.currentSession,
-      score: score ?? this.score,
-      level: level ?? this.level,
-      linesCleared: linesCleared ?? this.linesCleared,
-      comboCount: comboCount ?? this.comboCount,
-      maxCombo: maxCombo ?? this.maxCombo,
-      streakCount: streakCount ?? this.streakCount,
-      maxStreak: maxStreak ?? this.maxStreak,
-      activeBlocks: activeBlocks ?? this.activeBlocks,
-      grid: grid ?? this.grid,
-      sessionDuration: sessionDuration ?? this.sessionDuration,
-      remainingUndos: remainingUndos ?? this.remainingUndos,
-      remainingHints: remainingHints ?? this.remainingHints,
-      errorMessage: errorMessage ?? this.errorMessage,
-      sessionData: sessionData ?? this.sessionData,
-      isFirstGame: isFirstGame ?? this.isFirstGame,
-      lastMoveTime: lastMoveTime ?? this.lastMoveTime,
-      powerUpCounts: powerUpCounts ?? this.powerUpCounts,
-    );
-  }
-
-  @override
-  List<Object?> get props => [
-        status,
-        currentSession,
-        score,
-        level,
-        linesCleared,
-        comboCount,
-        maxCombo,
-        streakCount,
-        maxStreak,
-        activeBlocks,
-        grid,
-        sessionDuration,
-        remainingUndos,
-        remainingHints,
-        errorMessage,
-        sessionData,
-        isFirstGame,
-        lastMoveTime,
-        powerUpCounts,
-      ];
-}
+import 'package:puzzle_box/core/state/game_state.dart';
+import 'package:puzzle_box/domain/entities/block_entity.dart';
+import 'package:puzzle_box/domain/entities/game_session_entity.dart';
+import 'package:puzzle_box/domain/usecases/game_usecases.dart';
+import 'package:puzzle_box/domain/usecases/achievement_usecases_dart.dart';
 
 /// GameCubit manages the core game state and logic coordination.
 /// Handles game sessions, scoring, level progression, and game flow.
@@ -147,10 +19,16 @@ class GameCubit extends Cubit<GameState> {
   // Timers for game management
   Timer? _gameTimer;
   Timer? _autoSaveTimer;
+  Timer? _comboTimer;
   
   // Performance tracking
   DateTime? _lastFrameTime;
   final List<Duration> _frameTimes = [];
+  
+  // Game state tracking
+  DateTime? _gameStartTime;
+  DateTime? _lastMoveTime;
+  int _moveCount = 0;
 
   GameCubit(
     this._gameUseCases,
@@ -163,6 +41,7 @@ class GameCubit extends Cubit<GameState> {
   Future<void> close() async {
     _gameTimer?.cancel();
     _autoSaveTimer?.cancel();
+    _comboTimer?.cancel();
     await super.close();
   }
 
@@ -180,14 +59,23 @@ class GameCubit extends Cubit<GameState> {
   Future<void> startNewGame({
     GameDifficulty difficulty = GameDifficulty.normal,
     String? sessionId,
+    bool continueFromSave = false,
   }) async {
     try {
       emit(state.copyWith(status: GameStateStatus.loading));
+      developer.log('Starting new game with difficulty: ${difficulty.name}', name: 'GameCubit');
       
       // Create new game session
       final gameSession = await _gameUseCases.createNewGame(difficulty: difficulty);
       
+      // Generate initial blocks
+      final initialBlocks = _gameUseCases.generateNextBlocks(gameSession);
+      
       // Initialize game state
+      _gameStartTime = DateTime.now();
+      _lastMoveTime = DateTime.now();
+      _moveCount = 0;
+      
       emit(state.copyWith(
         status: GameStateStatus.playing,
         currentSession: gameSession,
@@ -198,20 +86,23 @@ class GameCubit extends Cubit<GameState> {
         maxCombo: 0,
         streakCount: 0,
         maxStreak: 0,
-        grid: _createEmptyGrid(),
-        activeBlocks: _generateInitialBlocks(),
+        activeBlocks: initialBlocks,
+        grid: List.generate(
+          AppConstants.defaultGridSize,
+          (_) => List.filled(AppConstants.defaultGridSize, 0),
+        ),
         sessionDuration: Duration.zero,
         remainingUndos: AppConstants.maxUndoCount,
-        remainingHints: AppConstants.maxHints,
+        remainingHints: AppConstants.maxHintCount,
         errorMessage: null,
-        sessionData: SessionStatistics.initial(),
-        isFirstGame: sessionId == null,
-        lastMoveTime: DateTime.now(),
-        powerUpCounts: _getInitialPowerUps(difficulty),
+        sessionData: gameSession.statistics,
+        isFirstGame: gameSession.isFirstGame,
+        lastMoveTime: _lastMoveTime,
+        powerUpCounts: gameSession.remainingPowerUps,
       ));
       
       _startGameTimer();
-      developer.log('New game started with difficulty: ${difficulty.name}', name: 'GameCubit');
+      developer.log('New game started successfully', name: 'GameCubit');
       
     } catch (e) {
       developer.log('Failed to start new game: $e', name: 'GameCubit');
@@ -226,9 +117,14 @@ class GameCubit extends Cubit<GameState> {
   Future<void> loadSavedGame() async {
     try {
       emit(state.copyWith(status: GameStateStatus.loading));
+      developer.log('Loading saved game', name: 'GameCubit');
       
       final savedGame = await _gameUseCases.loadSavedGame();
+      
       if (savedGame != null) {
+        _gameStartTime = savedGame.createdAt;
+        _lastMoveTime = savedGame.updatedAt;
+        
         emit(state.copyWith(
           status: GameStateStatus.playing,
           currentSession: savedGame,
@@ -238,7 +134,7 @@ class GameCubit extends Cubit<GameState> {
           comboCount: savedGame.comboCount,
           maxCombo: savedGame.maxCombo,
           grid: savedGame.gridState,
-          sessionDuration: savedGame.playTime,
+          sessionDuration: savedGame.actualPlayTime,
           remainingUndos: savedGame.remainingPowerUps['undo'] ?? 0,
           remainingHints: savedGame.remainingPowerUps['hint'] ?? 0,
           sessionData: savedGame.statistics,
@@ -304,6 +200,18 @@ class GameCubit extends Cubit<GameState> {
       // Save final session
       if (updatedSession != null) {
         await _gameUseCases.saveGame(updatedSession);
+        await _gameUseCases.saveFinalScore(
+          updatedSession.sessionId,
+          state.score,
+          {
+            'level': state.level,
+            'linesCleared': state.linesCleared,
+            'maxCombo': state.maxCombo,
+            'sessionDuration': state.sessionDuration.inSeconds,
+            'moveCount': _moveCount,
+            'userInitiated': userInitiated,
+          },
+        );
       }
       
       developer.log('Game ended - Score: ${state.score}, Level: ${state.level}', name: 'GameCubit');
@@ -334,266 +242,162 @@ class GameCubit extends Cubit<GameState> {
       );
 
       // Check for line clears
-      final (clearedLines, newScore) = _checkForLineClears(updatedSession.gridState);
+      final (clearedRows, clearedCols, lineScore) = _gameUseCases.checkAndClearLines(updatedSession);
       
-      // Update combo and streak
-      final newCombo = clearedLines.isNotEmpty ? state.comboCount + 1 : 0;
-      final newStreak = clearedLines.isNotEmpty ? state.streakCount + 1 : 0;
+      // Update game state
+      var newSession = updatedSession;
+      var newScore = state.score + _calculatePlacementScore(block);
+      var newCombo = state.comboCount;
+      var newStreak = state.streakCount;
+      
+      // Handle line clears
+      if (clearedRows.isNotEmpty || clearedCols.isNotEmpty) {
+        newSession = _gameUseCases.clearLines(newSession, clearedRows, clearedCols, lineScore);
+        newScore += lineScore;
+        newCombo += 1;
+        newStreak += 1;
+        
+        // Reset combo timer
+        _resetComboTimer();
+      } else {
+        // Reset combo if no lines cleared
+        newCombo = 0;
+      }
+      
+      // Update move tracking
+      _moveCount++;
+      _lastMoveTime = DateTime.now();
+      
+      // Calculate new level
+      final newLevel = _calculateLevel(state.linesCleared + clearedRows.length + clearedCols.length);
+      
+      // Remove placed block from active blocks
+      final remainingBlocks = List<Block>.from(state.activeBlocks)..remove(block);
       
       // Generate new blocks if needed
-      final newActiveBlocks = _updateActiveBlocks(block);
+      if (remainingBlocks.length < 2) {
+        final newBlocks = _gameUseCases.generateNextBlocks(newSession);
+        remainingBlocks.addAll(newBlocks);
+      }
       
-      // Calculate level progression
-      final newLevel = _calculateLevel(state.linesCleared + clearedLines.length);
-
-      emit(state.copyWith(
-        currentSession: updatedSession,
-        score: state.score + newScore,
-        level: newLevel,
-        linesCleared: state.linesCleared + clearedLines.length,
-        comboCount: newCombo,
-        maxCombo: newCombo > state.maxCombo ? newCombo : state.maxCombo,
-        streakCount: newStreak,
-        maxStreak: newStreak > state.maxStreak ? newStreak : state.maxStreak,
-        grid: updatedSession.gridState,
-        activeBlocks: newActiveBlocks,
-        lastMoveTime: DateTime.now(),
-        sessionData: state.sessionData?.copyWith(
-          blocksPlaced: (state.sessionData?.blocksPlaced ?? 0) + 1,
-          linesCleared: (state.sessionData?.linesCleared ?? 0) + clearedLines.length,
-          lastBlockTime: DateTime.now(),
-        ),
-      ));
-
       // Check for game over
-      if (_isGameOver(updatedSession.gridState)) {
+      final isGameOver = _gameUseCases.isGameOver(newSession, remainingBlocks);
+      
+      emit(state.copyWith(
+        currentSession: newSession,
+        score: newScore,
+        level: newLevel,
+        linesCleared: state.linesCleared + clearedRows.length + clearedCols.length,
+        comboCount: newCombo,
+        maxCombo: math.max(state.maxCombo, newCombo),
+        streakCount: newStreak,
+        maxStreak: math.max(state.maxStreak, newStreak),
+        activeBlocks: remainingBlocks,
+        grid: newSession.gridState,
+        lastMoveTime: _lastMoveTime,
+        status: isGameOver ? GameStateStatus.gameOver : GameStateStatus.playing,
+      ));
+      
+      // Auto-save after significant progress
+      if (_moveCount % 5 == 0) {
+        await _autoSaveGame();
+      }
+      
+      // End game if no moves available
+      if (isGameOver) {
         await endGame(userInitiated: false);
       }
-
-      developer.log('Block placed at ($gridRow, $gridCol) - Score: ${state.score}', name: 'GameCubit');
+      
+      developer.log('Block placed: +$newScore points', name: 'GameCubit');
       
     } catch (e) {
       developer.log('Failed to place block: $e', name: 'GameCubit');
       emit(state.copyWith(
-        status: GameStateStatus.error,
         errorMessage: 'Failed to place block: $e',
       ));
     }
   }
 
-  /// Use a power-up
-  Future<void> usePowerUp(PowerUpType powerUpType) async {
-    if (!state.isPlaying) return;
-
+  /// Use undo functionality
+  Future<void> useUndo() async {
+    if (!state.isPlaying || state.remainingUndos <= 0) return;
+    
     try {
-      final currentCount = state.powerUpCounts[powerUpType.name] ?? 0;
-      if (currentCount <= 0) {
-        throw Exception('No ${powerUpType.name} power-ups remaining');
-      }
-
-      // Apply power-up effect based on type
-      switch (powerUpType) {
-        case PowerUpType.undo:
-          _handleUndoPowerUp();
-          break;
-        case PowerUpType.hint:
-          _handleHintPowerUp();
-          break;
-        case PowerUpType.shuffle:
-          _handleShufflePowerUp();
-          break;
-        case PowerUpType.bomb:
-          _handleBombPowerUp();
-          break;
-        case PowerUpType.freeze:
-          _handleFreezePowerUp();
-          break;
-      }
-
-      // Update power-up count
-      final updatedCounts = Map<String, int>.from(state.powerUpCounts);
-      updatedCounts[powerUpType.name] = currentCount - 1;
-
+      // Implement undo logic here
+      // For now, just decrement undo count
       emit(state.copyWith(
-        powerUpCounts: updatedCounts,
-        sessionData: state.sessionData?.copyWith(
-          powerUpsUsed: (state.sessionData?.powerUpsUsed ?? 0) + 1,
-        ),
+        remainingUndos: state.remainingUndos - 1,
       ));
-
-      developer.log('Power-up used: ${powerUpType.name}', name: 'GameCubit');
       
+      developer.log('Undo used, remaining: ${state.remainingUndos}', name: 'GameCubit');
+    } catch (e) {
+      developer.log('Failed to use undo: $e', name: 'GameCubit');
+    }
+  }
+
+  /// Use hint functionality
+  Future<void> useHint() async {
+    if (!state.isPlaying || state.remainingHints <= 0) return;
+    
+    try {
+      final hint = _gameUseCases.getGameHint(state.currentSession!, state.activeBlocks);
+      
+      if (hint != null) {
+        emit(state.copyWith(
+          remainingHints: state.remainingHints - 1,
+        ));
+        
+        // Emit hint data through state or separate mechanism
+        developer.log('Hint provided: ${hint['reason']}', name: 'GameCubit');
+      }
+    } catch (e) {
+      developer.log('Failed to use hint: $e', name: 'GameCubit');
+    }
+  }
+
+  /// Use power-up
+  Future<void> usePowerUp(String powerUpType) async {
+    if (!state.isPlaying) return;
+    
+    final count = state.powerUpCounts[powerUpType] ?? 0;
+    if (count <= 0) return;
+    
+    try {
+      // Decrement power-up count
+      final updatedCounts = Map<String, int>.from(state.powerUpCounts);
+      updatedCounts[powerUpType] = count - 1;
+      
+      emit(state.copyWith(powerUpCounts: updatedCounts));
+      
+      developer.log('Power-up used: $powerUpType', name: 'GameCubit');
     } catch (e) {
       developer.log('Failed to use power-up: $e', name: 'GameCubit');
-      emit(state.copyWith(
-        status: GameStateStatus.error,
-        errorMessage: 'Failed to use power-up: $e',
-      ));
-    }
-  }
-
-  /// Save current game state
-  Future<void> saveGame() async {
-    if (state.currentSession != null) {
-      try {
-        final success = await _gameUseCases.saveGame(state.currentSession!);
-        if (!success) {
-          throw Exception('Failed to save game');
-        }
-        developer.log('Game saved successfully', name: 'GameCubit');
-      } catch (e) {
-        developer.log('Failed to save game: $e', name: 'GameCubit');
-        emit(state.copyWith(
-          status: GameStateStatus.error,
-          errorMessage: 'Failed to save game: $e',
-        ));
-      }
     }
   }
 
   // ========================================
-  // PRIVATE HELPER METHODS
+  // SCORING & PROGRESSION
   // ========================================
 
-  /// Create empty 8x8 grid
-  List<List<int>> _createEmptyGrid() {
-    return List.generate(
-      AppConstants.gridSize,
-      (_) => List.filled(AppConstants.gridSize, 0),
-    );
-  }
-
-  /// Generate initial blocks for the game
-  List<Block> _generateInitialBlocks() {
-    final blocks = <Block>[];
-    for (int i = 0; i < AppConstants.maxActiveBlocks; i++) {
-      blocks.add(_generateRandomBlock());
-    }
-    return blocks;
-  }
-
-  /// Generate a random block based on current level
-  Block _generateRandomBlock() {
-    // Use block shapes from constants
-    final shapeIndex = DateTime.now().millisecondsSinceEpoch % AppConstants.blockShapes.length;
-    final shape = AppConstants.blockShapes[shapeIndex];
-    
-    return Block.fromShape(
-      shape: shape,
-      colorId: shapeIndex,
-      level: state.level,
-    );
-  }
-
-  /// Update active blocks after placing one
-  List<Block> _updateActiveBlocks(Block placedBlock) {
-    final updatedBlocks = List<Block>.from(state.activeBlocks);
-    updatedBlocks.removeWhere((block) => block.id == placedBlock.id);
-    
-    // Add new block if needed
-    if (updatedBlocks.length < AppConstants.maxActiveBlocks) {
-      updatedBlocks.add(_generateRandomBlock());
-    }
-    
-    return updatedBlocks;
-  }
-
-  /// Check for completed lines and return cleared lines with score
-  (List<int>, int) _checkForLineClears(List<List<int>> grid) {
-    final clearedLines = <int>[];
-    int totalScore = 0;
-
-    // Check rows
-    for (int row = 0; row < AppConstants.gridSize; row++) {
-      if (grid[row].every((cell) => cell != 0)) {
-        clearedLines.add(row);
-      }
-    }
-
-    // Check columns
-    for (int col = 0; col < AppConstants.gridSize; col++) {
-      if (grid.every((row) => row[col] != 0)) {
-        clearedLines.add(AppConstants.gridSize + col); // Offset for columns
-      }
-    }
-
-    // Calculate score based on cleared lines
-    if (clearedLines.isNotEmpty) {
-      final baseScore = AppConstants.baseScores['singleLine'] ?? 100;
-      final multiplier = AppConstants.comboMultipliers[
-        (state.comboCount < AppConstants.comboMultipliers.length 
-            ? state.comboCount 
-            : AppConstants.comboMultipliers.length - 1)
-      ];
-      
-      totalScore = (baseScore * clearedLines.length * multiplier).round();
-    }
-
-    return (clearedLines, totalScore);
+  /// Calculate score for placing a block
+  int _calculatePlacementScore(Block block) {
+    final blockSize = block.shape.expand((row) => row).where((cell) => cell == 1).length;
+    return blockSize * 10 * state.level;
   }
 
   /// Calculate level based on lines cleared
   int _calculateLevel(int totalLinesCleared) {
-    return (totalLinesCleared / AppConstants.linesPerLevel).floor() + 1;
+    return math.max(1, (totalLinesCleared ~/ 10) + 1);
   }
 
-  /// Check if game is over
-  bool _isGameOver(List<List<int>> grid) {
-    // Simple game over check - could be more sophisticated
-    int filledCells = 0;
-    for (final row in grid) {
-      filledCells += row.where((cell) => cell != 0).length;
-    }
-    
-    final totalCells = AppConstants.gridSize * AppConstants.gridSize;
-    final fillPercentage = (filledCells / totalCells) * 100;
-    
-    return fillPercentage >= 80.0; // Game over at 80% fill
-  }
-
-  /// Get initial power-ups based on difficulty
-  Map<String, int> _getInitialPowerUps(GameDifficulty difficulty) {
-    switch (difficulty) {
-      case GameDifficulty.easy:
-        return {'undo': 5, 'hint': 8, 'shuffle': 3};
-      case GameDifficulty.normal:
-        return {'undo': 3, 'hint': 5, 'shuffle': 2};
-      case GameDifficulty.hard:
-        return {'undo': 2, 'hint': 3, 'shuffle': 1};
-      case GameDifficulty.expert:
-        return {'undo': 1, 'hint': 1, 'shuffle': 0};
-    }
-  }
-
-  // Power-up handlers
-  void _handleUndoPowerUp() {
-    // Implement undo logic
-    developer.log('Undo power-up used', name: 'GameCubit');
-  }
-
-  void _handleHintPowerUp() {
-    // Implement hint logic
-    developer.log('Hint power-up used', name: 'GameCubit');
-  }
-
-  void _handleShufflePowerUp() {
-    // Shuffle active blocks
-    final shuffledBlocks = <Block>[];
-    for (int i = 0; i < AppConstants.maxActiveBlocks; i++) {
-      shuffledBlocks.add(_generateRandomBlock());
-    }
-    emit(state.copyWith(activeBlocks: shuffledBlocks));
-    developer.log('Shuffle power-up used', name: 'GameCubit');
-  }
-
-  void _handleBombPowerUp() {
-    // Implement bomb logic
-    developer.log('Bomb power-up used', name: 'GameCubit');
-  }
-
-  void _handleFreezePowerUp() {
-    // Implement freeze logic
-    developer.log('Freeze power-up used', name: 'GameCubit');
+  /// Reset combo timer
+  void _resetComboTimer() {
+    _comboTimer?.cancel();
+    _comboTimer = Timer(const Duration(seconds: 3), () {
+      if (state.isPlaying) {
+        emit(state.copyWith(comboCount: 0));
+      }
+    });
   }
 
   // ========================================
@@ -604,15 +408,9 @@ class GameCubit extends Cubit<GameState> {
   void _startGameTimer() {
     _gameTimer?.cancel();
     _gameTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (state.isPlaying) {
-        emit(state.copyWith(
-          sessionDuration: state.sessionDuration + const Duration(seconds: 1),
-        ));
-        
-        // Check for maximum game duration
-        if (state.sessionDuration >= const Duration(hours: 2)) {
-          endGame(userInitiated: false);
-        }
+      if (state.isPlaying && _gameStartTime != null) {
+        final elapsed = DateTime.now().difference(_gameStartTime!);
+        emit(state.copyWith(sessionDuration: elapsed));
       }
     });
   }
@@ -620,31 +418,119 @@ class GameCubit extends Cubit<GameState> {
   /// Stop the game timer
   void _stopGameTimer() {
     _gameTimer?.cancel();
-    _gameTimer = null;
   }
 
   /// Setup auto-save functionality
   void _setupAutoSave() {
-    _autoSaveTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      _autoSave();
+    _autoSaveTimer = Timer.periodic(const Duration(minutes: 2), (timer) {
+      if (state.isPlaying) {
+        _autoSaveGame();
+      }
     });
   }
 
   /// Stop auto-save
   void _stopAutoSave() {
     _autoSaveTimer?.cancel();
-    _autoSaveTimer = null;
   }
 
   /// Auto-save current game state
-  void _autoSave() {
-    if (state.isPlaying && state.currentSession != null) {
+  Future<void> _autoSaveGame() async {
+    if (state.currentSession != null) {
       try {
-        _gameUseCases.saveGame(state.currentSession!);
-        developer.log('Auto-save completed', name: 'GameCubit');
+        await _gameUseCases.autoSaveGame(state.currentSession!);
+        developer.log('Game auto-saved', name: 'GameCubit');
       } catch (e) {
         developer.log('Auto-save failed: $e', name: 'GameCubit');
       }
     }
+  }
+
+  // ========================================
+  // GAME DATA & STATISTICS
+  // ========================================
+
+  /// Get current game statistics
+  Map<String, dynamic> getGameStatistics() {
+    return {
+      'score': state.score,
+      'level': state.level,
+      'linesCleared': state.linesCleared,
+      'maxCombo': state.maxCombo,
+      'maxStreak': state.maxStreak,
+      'sessionDuration': state.sessionDuration.inSeconds,
+      'moveCount': _moveCount,
+      'remainingUndos': state.remainingUndos,
+      'remainingHints': state.remainingHints,
+      'isFirstGame': state.isFirstGame,
+      'difficulty': state.currentSession?.difficulty.name,
+    };
+  }
+
+  /// Check if current score is a high score
+  Future<bool> isHighScore() async {
+    try {
+      return await _gameUseCases.isHighScore(state.score);
+    } catch (e) {
+      developer.log('Failed to check high score: $e', name: 'GameCubit');
+      return false;
+    }
+  }
+
+  /// Get game performance metrics
+  Map<String, dynamic> getPerformanceMetrics() {
+    return {
+      'averageFrameTime': _frameTimes.isNotEmpty 
+        ? _frameTimes.map((d) => d.inMicroseconds).reduce((a, b) => a + b) / _frameTimes.length / 1000
+        : 0.0,
+      'frameCount': _frameTimes.length,
+      'lastFrameTime': _lastFrameTime?.millisecondsSinceEpoch,
+      'gameUptime': _gameStartTime != null 
+        ? DateTime.now().difference(_gameStartTime!).inSeconds 
+        : 0,
+    };
+  }
+
+  // ========================================
+  // UTILITY METHODS
+  // ========================================
+
+  /// Clear any error state
+  void clearError() {
+    emit(state.copyWith(errorMessage: null));
+  }
+
+  /// Reset game state to initial
+  void resetToInitial() {
+    _stopGameTimer();
+    _stopAutoSave();
+    _comboTimer?.cancel();
+    
+    emit(const GameState());
+    developer.log('Game state reset to initial', name: 'GameCubit');
+  }
+
+  /// Get current game session ID
+  String? getCurrentSessionId() {
+    return state.currentSession?.sessionId;
+  }
+
+  /// Check if game can be saved
+  bool canSaveGame() {
+    return state.isPlaying && state.currentSession != null;
+  }
+
+  /// Force save current game
+  Future<bool> forceSaveGame() async {
+    if (canSaveGame()) {
+      try {
+        await _gameUseCases.saveGame(state.currentSession!);
+        return true;
+      } catch (e) {
+        developer.log('Failed to force save game: $e', name: 'GameCubit');
+        return false;
+      }
+    }
+    return false;
   }
 }

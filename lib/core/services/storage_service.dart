@@ -49,6 +49,108 @@ class StorageService {
     }
   }
 
+  /// Handle version migration
+  Future<void> _handleVersionMigration() async {
+    final currentVersion = _prefs.getInt(_versionKey) ?? 1;
+    
+    if (currentVersion < _currentVersion) {
+      developer.log('Migrating storage from version $currentVersion to $_currentVersion', name: 'StorageService');
+      
+      // Perform migration logic here
+      switch (currentVersion) {
+        case 1:
+          await _migrateFromV1ToV2();
+          break;
+      }
+      
+      await _prefs.setInt(_versionKey, _currentVersion);
+    }
+  }
+
+  /// Migrate from version 1 to version 2
+  Future<void> _migrateFromV1ToV2() async {
+    // Example migration: rename keys, update data formats, etc.
+    final oldStatsKey = 'player_stats';
+    if (_prefs.containsKey(oldStatsKey)) {
+      final oldStats = _prefs.getString(oldStatsKey);
+      if (oldStats != null) {
+        await _prefs.setString(AppConstants.playerStatsKey, oldStats);
+        await _prefs.remove(oldStatsKey);
+      }
+    }
+  }
+
+  /// Perform cleanup if needed
+  Future<void> _performCleanupIfNeeded() async {
+    final lastCleanup = _prefs.getString('last_cleanup');
+    DateTime? lastCleanupDate;
+    
+    if (lastCleanup != null) {
+      try {
+        lastCleanupDate = DateTime.parse(lastCleanup);
+      } catch (e) {
+        developer.log('Failed to parse last cleanup date: $e', name: 'StorageService');
+      }
+    }
+    
+    if (lastCleanupDate == null || 
+        DateTime.now().difference(lastCleanupDate) > _cleanupInterval) {
+      await _performCleanup();
+    }
+  }
+
+  /// Perform storage cleanup
+  Future<void> _performCleanup() async {
+    try {
+      // Remove expired cached data
+      final keysToRemove = <String>[];
+      
+      for (final key in _prefs.getKeys()) {
+        if (key.startsWith('cache_')) {
+          final timestamp = _prefs.getString('${key}_timestamp');
+          if (timestamp != null) {
+            final cacheTime = DateTime.parse(timestamp);
+            if (DateTime.now().difference(cacheTime) > _cacheTimeout) {
+              keysToRemove.add(key);
+              keysToRemove.add('${key}_timestamp');
+            }
+          }
+        }
+      }
+      
+      for (final key in keysToRemove) {
+        await _prefs.remove(key);
+      }
+      
+      // Record cleanup time
+      await _prefs.setString('last_cleanup', DateTime.now().toIso8601String());
+      _lastCleanup = DateTime.now();
+      
+      developer.log('Cleaned up ${keysToRemove.length} expired cache entries', name: 'StorageService');
+      
+    } catch (e) {
+      developer.log('Failed to perform cleanup: $e', name: 'StorageService');
+    }
+  }
+
+  /// Preload critical data into cache
+  Future<void> _preloadCriticalData() async {
+    final criticalKeys = [
+      AppConstants.playerStatsKey,
+      AppConstants.settingsKey,
+      AppConstants.preferencesKey,
+    ];
+    
+    for (final key in criticalKeys) {
+      final value = _prefs.get(key);
+      if (value != null) {
+        _cache[key] = value;
+      }
+    }
+    
+    developer.log('Preloaded ${_cache.length} critical data entries', name: 'StorageService');
+  }
+
   // ========================================
   // CORE STORAGE OPERATIONS
   // ========================================
@@ -122,7 +224,7 @@ class StorageService {
         result = value as T;
       } else if (T == bool && value is bool) {
         result = value as T;
-      } else if (T == List<String> && value is List<String>) {
+      } else if (value is List) {
         result = value as T;
       } else if (value is String) {
         // Try to deserialize JSON
@@ -130,6 +232,8 @@ class StorageService {
           final decoded = jsonDecode(value);
           if (decoded is T) {
             result = decoded;
+          } else if (T == Map<String, dynamic> && decoded is Map) {
+            result = Map<String, dynamic>.from(decoded) as T;
           }
         } catch (e) {
           developer.log('Failed to deserialize JSON for key $key: $e', name: 'StorageService');
@@ -241,9 +345,8 @@ class StorageService {
     // Validate version compatibility
     if (state != null) {
       final version = state['version'] as int? ?? 1;
-      if (version < _currentVersion) {
-        developer.log('Game state version mismatch, clearing', name: 'StorageService');
-        removeValue(AppConstants.gameStateKey);
+      if (version > _currentVersion) {
+        developer.log('Game state version $version is newer than supported $_currentVersion', name: 'StorageService');
         return null;
       }
     }
@@ -251,50 +354,24 @@ class StorageService {
     return state;
   }
 
-  /// Store achievements data
-  Future<bool> saveAchievements(List<Map<String, dynamic>> achievements) async {
+  /// Store achievements
+  Future<bool> saveAchievements(Map<String, dynamic> achievements) async {
     return await setValue(AppConstants.achievementsKey, achievements);
   }
 
-  /// Load achievements data
-  List<Map<String, dynamic>> getAchievements() {
-    final achievements = getValue<List<dynamic>>(AppConstants.achievementsKey);
-    if (achievements == null) return [];
-    
-    return achievements.cast<Map<String, dynamic>>();
+  /// Load achievements
+  Map<String, dynamic>? getAchievements() {
+    return getValue<Map<String, dynamic>>(AppConstants.achievementsKey);
   }
 
-  /// Store settings
+  /// Store app settings
   Future<bool> saveSettings(Map<String, dynamic> settings) async {
     return await setValue(AppConstants.settingsKey, settings);
   }
 
-  /// Load settings
+  /// Load app settings
   Map<String, dynamic>? getSettings() {
     return getValue<Map<String, dynamic>>(AppConstants.settingsKey);
-  }
-
-  /// Store high scores
-  Future<bool> saveHighScores(List<Map<String, dynamic>> scores) async {
-    // Keep only top scores and add timestamp
-    final timestampedScores = scores.map((score) {
-      score['timestamp'] = DateTime.now().toIso8601String();
-      return score;
-    }).toList();
-    
-    // Sort by score and keep top entries
-    timestampedScores.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
-    final topScores = timestampedScores.take(AppConstants.maxLeaderboardEntries).toList();
-    
-    return await setValue(AppConstants.highScoresKey, topScores);
-  }
-
-  /// Load high scores
-  List<Map<String, dynamic>> getHighScores() {
-    final scores = getValue<List<dynamic>>(AppConstants.highScoresKey);
-    if (scores == null) return [];
-    
-    return scores.cast<Map<String, dynamic>>();
   }
 
   // ========================================
@@ -302,13 +379,13 @@ class StorageService {
   // ========================================
 
   /// Store multiple values in a batch
-  Future<bool> setBatch(Map<String, dynamic> values) async {
+  Future<bool> setBatch(Map<String, dynamic> data) async {
     try {
       _ensureInitialized();
       
       bool allSuccess = true;
       
-      for (final entry in values.entries) {
+      for (final entry in data.entries) {
         final success = await setValue(entry.key, entry.value);
         if (!success) {
           allSuccess = false;
@@ -430,26 +507,21 @@ class StorageService {
       // Validate version compatibility
       final version = data['_export_version'] as int? ?? 1;
       if (version > _currentVersion) {
-        developer.log('Import data version too new: $version > $_currentVersion', name: 'StorageService');
+        developer.log('Import data version $version is newer than supported $_currentVersion', name: 'StorageService');
         return false;
       }
       
-      // Remove metadata keys
+      // Remove metadata before importing
       data.remove('_export_timestamp');
       data.remove('_export_version');
       
       // Import data
       bool allSuccess = true;
-      
       for (final entry in data.entries) {
         final success = await setValue(entry.key, entry.value);
         if (!success) {
           allSuccess = false;
         }
-      }
-      
-      if (allSuccess) {
-        developer.log('Successfully imported ${data.length} entries', name: 'StorageService');
       }
       
       return allSuccess;
@@ -460,141 +532,7 @@ class StorageService {
     }
   }
 
-  // ========================================
-  // MAINTENANCE OPERATIONS
-  // ========================================
-
-  /// Handle version migration
-  Future<void> _handleVersionMigration() async {
-    final currentVersion = getValue<int>(_versionKey, defaultValue: 1);
-    
-    if (currentVersion! < _currentVersion) {
-      developer.log('Migrating storage from version $currentVersion to $_currentVersion', name: 'StorageService');
-      
-      // Perform migration based on version differences
-      await _performMigration(currentVersion, _currentVersion);
-      
-      // Update version
-      await setValue(_versionKey, _currentVersion);
-    }
-  }
-
-  /// Perform storage migration
-  Future<void> _performMigration(int fromVersion, int toVersion) async {
-    // Migration logic for different versions
-    if (fromVersion == 1 && toVersion >= 2) {
-      // Version 1 to 2: Update key formats
-      await _migrateV1ToV2();
-    }
-    
-    // Add more migration logic as needed
-  }
-
-  /// Migrate from version 1 to version 2
-  Future<void> _migrateV1ToV2() async {
-    // Update key formats from v1 to v2
-    final oldKeys = {
-      'player_stats': AppConstants.playerStatsKey,
-      'achievements': AppConstants.achievementsKey,
-      'settings': AppConstants.settingsKey,
-      'game_state': AppConstants.gameStateKey,
-    };
-    
-    for (final entry in oldKeys.entries) {
-      if (containsKey(entry.key)) {
-        final value = getValue(entry.key);
-        if (value != null) {
-          await setValue(entry.value, value);
-          await removeValue(entry.key);
-        }
-      }
-    }
-  }
-
-  /// Perform cleanup if needed
-  Future<void> _performCleanupIfNeeded() async {
-    final lastCleanup = getValue<String>('last_cleanup');
-    final lastCleanupTime = lastCleanup != null 
-        ? DateTime.tryParse(lastCleanup) 
-        : null;
-    
-    if (lastCleanupTime == null || 
-        DateTime.now().difference(lastCleanupTime) > _cleanupInterval) {
-      await _performCleanup();
-    }
-  }
-
-  /// Perform storage cleanup
-  Future<void> _performCleanup() async {
-    try {
-      developer.log('Performing storage cleanup', name: 'StorageService');
-      
-      // Remove expired data
-      await _removeExpiredData();
-      
-      // Clear cache
-      _cache.clear();
-      
-      // Update cleanup timestamp
-      await setValue('last_cleanup', DateTime.now().toIso8601String());
-      
-      developer.log('Storage cleanup completed', name: 'StorageService');
-      
-    } catch (e) {
-      developer.log('Failed to perform cleanup: $e', name: 'StorageService');
-    }
-  }
-
-  /// Remove expired data
-  Future<void> _removeExpiredData() async {
-    final keysToRemove = <String>[];
-    
-    for (final key in _prefs.getKeys()) {
-      // Check for old temporary data
-      if (key.startsWith('temp_') || key.startsWith('cache_')) {
-        keysToRemove.add(key);
-      }
-      
-      // Check for expired session data
-      if (key.contains('session')) {
-        final value = getValue<Map<String, dynamic>>(key);
-        if (value != null) {
-          final timestamp = value['timestamp'] as String?;
-          if (timestamp != null) {
-            final date = DateTime.tryParse(timestamp);
-            if (date != null && DateTime.now().difference(date) > AppConstants.dataExpirationTime) {
-              keysToRemove.add(key);
-            }
-          }
-        }
-      }
-    }
-    
-    // Remove expired keys
-    for (final key in keysToRemove) {
-      await removeValue(key);
-    }
-    
-    if (keysToRemove.isNotEmpty) {
-      developer.log('Removed ${keysToRemove.length} expired entries', name: 'StorageService');
-    }
-  }
-
-  /// Preload critical data into cache
-  Future<void> _preloadCriticalData() async {
-    final criticalKeys = [
-      AppConstants.settingsKey,
-      AppConstants.preferencesKey,
-    ];
-    
-    for (final key in criticalKeys) {
-      if (containsKey(key)) {
-        getValue(key); // This will cache the value
-      }
-    }
-  }
-
-  /// Ensure service is initialized
+  /// Ensure the service is initialized
   void _ensureInitialized() {
     if (!_isInitialized) {
       throw StateError('StorageService not initialized. Call initialize() first.');
@@ -621,6 +559,12 @@ class StorageService {
     _cache.clear();
     developer.log('Storage cache cleared', name: 'StorageService');
   }
+
+  /// Check if storage is initialized
+  bool get isInitialized => _isInitialized;
+
+  /// Get current version
+  int get currentVersion => _currentVersion;
 
   /// Dispose of the storage service
   Future<void> dispose() async {

@@ -5,7 +5,6 @@ import 'package:puzzle_box/domain/usecases/achievement_usecases_dart.dart';
 import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
-import 'package:puzzle_box/presentation/flame/box_hooks_game.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import 'core/services/audio_service.dart';
@@ -17,6 +16,7 @@ import 'domain/repositories/game_repository.dart';
 import 'domain/repositories/player_repository.dart';
 import 'domain/usecases/game_usecases.dart';
 import 'domain/usecases/player_usecases.dart';
+import 'core/state/player_state.dart';
 
 final getIt = GetIt.instance;
 final sl = getIt; // Backward compatibility alias
@@ -283,4 +283,3 @@ extension GetItExtension on GetIt {
     }
   }
 }
-

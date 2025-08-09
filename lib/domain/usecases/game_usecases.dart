@@ -1,17 +1,23 @@
-import 'package:flame/components.dart' as flame;
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:puzzle_box/core/constants/app_constants.dart';
 import 'package:puzzle_box/domain/entities/block_entity.dart';
 import 'package:puzzle_box/domain/entities/game_session_entity.dart';
 import '../repositories/game_repository.dart';
-import '../../core/constants/game_constants.dart';
 
+/// Game-related business logic operations.
+/// Manages game sessions, scoring, validation, and game mechanics.
+/// Follows Clean Architecture by containing all game-specific use cases.
 class GameUseCases {
   final GameRepository _repository;
   
   GameUseCases(this._repository);
+
+  // ========================================
+  // GAME SESSION MANAGEMENT
+  // ========================================
   
-  // Game session management
+  /// Load the most recent saved game
   Future<GameSession?> loadSavedGame() async {
     try {
       return await _repository.loadSavedGame();
@@ -21,6 +27,7 @@ class GameUseCases {
     }
   }
   
+  /// Save current game state
   Future<bool> saveGame(GameSession gameSession) async {
     try {
       return await _repository.saveGame(gameSession);
@@ -30,15 +37,54 @@ class GameUseCases {
     }
   }
   
-  Future<GameSession> createNewGame({required GameDifficulty difficulty}) async {
-    return await _repository.createNewGame();
+  /// Create a new game session
+  Future<GameSession> createNewGame({GameDifficulty? difficulty}) async {
+    try {
+      return await _repository.createNewGame(difficulty: difficulty);
+    } catch (e) {
+      debugPrint('Failed to create new game: $e');
+      // Return default game session
+      return GameSession.create(
+        difficulty: difficulty ?? GameDifficulty.normal,
+      );
+    }
   }
   
+  /// Clear saved game data
   Future<bool> clearSavedGame() async {
-    return await _repository.clearSavedGame();
+    try {
+      return await _repository.clearSavedGame();
+    } catch (e) {
+      debugPrint('Failed to clear saved game: $e');
+      return false;
+    }
   }
+
+  /// Auto-save game session
+  Future<bool> autoSaveGame(GameSession gameSession) async {
+    try {
+      return await _repository.autoSaveGameState(gameSession);
+    } catch (e) {
+      debugPrint('Failed to auto-save game: $e');
+      return false;
+    }
+  }
+
+  /// Complete a game session
+  Future<bool> completeGameSession(GameSession gameSession, Map<String, dynamic> completionData) async {
+    try {
+      return await _repository.completeGameSession(gameSession.sessionId, completionData);
+    } catch (e) {
+      debugPrint('Failed to complete game session: $e');
+      return false;
+    }
+  }
+
+  // ========================================
+  // GAME LOGIC OPERATIONS
+  // ========================================
   
-  // Game logic operations
+  /// Place a block on the game grid
   GameSession placeBlock(
     GameSession gameSession,
     Block block,
@@ -51,325 +97,342 @@ class GameUseCases {
     }
     
     // Create new grid with placed block
-    final newGrid = List<List<bool>>.from(
-      gameSession.grid.map((row) => List<bool>.from(row))
+    final newGrid = List<List<int>>.from(
+      gameSession.gridState.map((row) => List<int>.from(row)),
     );
     
-    // Mark cells as occupied
-    final occupiedCells = block.occupiedCells;
-    for (final cell in occupiedCells) {
-      final gridR = gridRow + cell.y.toInt();
-      final gridC = gridCol + cell.x.toInt();
-      if (gridR >= 0 && gridR < 8 && gridC >= 0 && gridC < 8) {
-        newGrid[gridR][gridC] = true;
+    // Place block on grid
+    for (int r = 0; r < block.shape.length; r++) {
+      for (int c = 0; c < block.shape[r].length; c++) {
+        if (block.shape[r][c] == 1) {
+          final targetRow = gridRow + r;
+          final targetCol = gridCol + c;
+          if (targetRow >= 0 && targetRow < newGrid.length &&
+              targetCol >= 0 && targetCol < newGrid[0].length) {
+            newGrid[targetRow][targetCol] = block.colorId;
+          }
+        }
       }
     }
     
-    // Remove placed block from active blocks
-    final newActiveBlocks = List<Block>.from(gameSession.activeBlocks);
-    newActiveBlocks.remove(block);
+    // Calculate score for placement
+    final placementScore = _calculatePlacementScore(block, gameSession.currentLevel);
     
-    // Calculate score for placing block
-    final blockScore = _calculateBlockScore(block, gameSession.level);
+    // Update session statistics
+    final updatedStats = gameSession.statistics.copyWith(
+      blocksPlaced: gameSession.statistics.blocksPlaced + 1,
+      totalMoves: gameSession.statistics.totalMoves + 1,
+    );
     
     return gameSession.copyWith(
-      grid: newGrid,
-      activeBlocks: newActiveBlocks,
-      score: gameSession.score + blockScore,
-      lastPlayTime: DateTime.now(),
+      gridState: newGrid,
+      currentScore: gameSession.currentScore + placementScore,
+      statistics: updatedStats,
+      updatedAt: DateTime.now(),
     );
   }
   
+  /// Check if a block can be placed at the specified position
   bool canPlaceBlock(GameSession gameSession, Block block, int gridRow, int gridCol) {
-    final occupiedCells = block.occupiedCells;
+    final grid = gameSession.gridState;
     
-    for (final cell in occupiedCells) {
-      final gridR = gridRow + cell.y.toInt();
-      final gridC = gridCol + cell.x.toInt();
-      
-      // Check boundaries
-      if (gridR < 0 || gridR >= 8 || gridC < 0 || gridC >= 8) {
-        return false;
-      }
-      
-      // Check if cell is already occupied
-      if (gameSession.grid[gridR][gridC]) {
-        return false;
+    // Check each cell of the block
+    for (int r = 0; r < block.shape.length; r++) {
+      for (int c = 0; c < block.shape[r].length; c++) {
+        if (block.shape[r][c] == 1) {
+          final targetRow = gridRow + r;
+          final targetCol = gridCol + c;
+          
+          // Check bounds
+          if (targetRow < 0 || targetRow >= grid.length ||
+              targetCol < 0 || targetCol >= grid[0].length) {
+            return false;
+          }
+          
+          // Check if cell is already occupied
+          if (grid[targetRow][targetCol] != 0) {
+            return false;
+          }
+        }
       }
     }
     
     return true;
   }
-  
-  GameSession clearCompletedLines(GameSession gameSession) {
-    final grid = gameSession.grid;
-    int linesCleared = 0;
-    int columnsCleared = 0;
-    final newGrid = List<List<bool>>.from(
-      grid.map((row) => List<bool>.from(row))
-    );
+
+  /// Check for completed lines and clear them
+  (List<int> rowsCleared, List<int> colsCleared, int scoreEarned) checkAndClearLines(GameSession gameSession) {
+    final grid = gameSession.gridState;
+    final gridSize = grid.length;
+    final rowsCleared = <int>[];
+    final colsCleared = <int>[];
     
-    // Check for completed rows
-    final completedRows = <int>[];
-    for (int row = 0; row < 8; row++) {
-      if (grid[row].every((cell) => cell)) {
-        completedRows.add(row);
+    // Check rows
+    for (int row = 0; row < gridSize; row++) {
+      if (grid[row].every((cell) => cell != 0)) {
+        rowsCleared.add(row);
       }
     }
     
-    // Check for completed columns
-    final completedCols = <int>[];
-    for (int col = 0; col < 8; col++) {
+    // Check columns
+    for (int col = 0; col < gridSize; col++) {
       bool isComplete = true;
-      for (int row = 0; row < 8; row++) {
-        if (!grid[row][col]) {
+      for (int row = 0; row < gridSize; row++) {
+        if (grid[row][col] == 0) {
           isComplete = false;
           break;
         }
       }
       if (isComplete) {
-        completedCols.add(col);
+        colsCleared.add(col);
       }
-    }
-    
-    // Clear completed lines
-    for (final row in completedRows) {
-      for (int col = 0; col < 8; col++) {
-        newGrid[row][col] = false;
-      }
-      linesCleared++;
-    }
-    
-    for (final col in completedCols) {
-      for (int row = 0; row < 8; row++) {
-        newGrid[row][col] = false;
-      }
-      columnsCleared++;
-    }
-    
-    final totalLinesCleared = linesCleared + columnsCleared;
-    
-    if (totalLinesCleared == 0) {
-      // Reset combo if no lines cleared
-      return gameSession.copyWith(comboCount: 0);
     }
     
     // Calculate score for cleared lines
-    final lineScore = _calculateLineScore(
-      linesCleared,
-      columnsCleared,
-      gameSession.comboCount + 1,
-      gameSession.level,
+    final totalLinesCleared = rowsCleared.length + colsCleared.length;
+    final scoreEarned = _calculateLineClearScore(totalLinesCleared, gameSession.currentLevel);
+    
+    return (rowsCleared, colsCleared, scoreEarned);
+  }
+
+  /// Clear specified lines from the grid
+  GameSession clearLines(GameSession gameSession, List<int> rowsCleared, List<int> colsCleared, int scoreEarned) {
+    final newGrid = List<List<int>>.from(
+      gameSession.gridState.map((row) => List<int>.from(row)),
     );
     
-    // Check for perfect clear
-    final isPerfectClear = _isPerfectClear(newGrid);
-    final perfectClearBonus = isPerfectClear ? GameConstants.baseScores['perfectClear']! : 0;
+    // Clear rows
+    for (final row in rowsCleared) {
+      for (int col = 0; col < newGrid[row].length; col++) {
+        newGrid[row][col] = 0;
+      }
+    }
     
-    // Update level based on lines cleared
+    // Clear columns
+    for (final col in colsCleared) {
+      for (int row = 0; row < newGrid.length; row++) {
+        newGrid[row][col] = 0;
+      }
+    }
+    
+    final totalLinesCleared = rowsCleared.length + colsCleared.length;
     final newLevel = _calculateLevel(gameSession.linesCleared + totalLinesCleared);
     
+    // Update session statistics
+    final updatedStats = gameSession.statistics.copyWith(
+      linesCleared: gameSession.statistics.linesCleared + totalLinesCleared,
+      totalScore: gameSession.currentScore + scoreEarned,
+    );
+    
     return gameSession.copyWith(
-      grid: newGrid,
-      score: gameSession.score + lineScore + perfectClearBonus,
+      gridState: newGrid,
+      currentScore: gameSession.currentScore + scoreEarned,
+      currentLevel: newLevel,
       linesCleared: gameSession.linesCleared + totalLinesCleared,
-      comboCount: gameSession.comboCount + 1,
-      streakCount: gameSession.streakCount + 1,
-      level: newLevel,
+      statistics: updatedStats,
+      updatedAt: DateTime.now(),
     );
   }
-  
-  bool isGameOver(GameSession gameSession) {
-    // Game is over if no active blocks can be placed
-    for (final block in gameSession.activeBlocks) {
-      for (int row = 0; row < 8; row++) {
-        for (int col = 0; col < 8; col++) {
-          if (canPlaceBlock(gameSession, block, row, col)) {
-            return false; // Found at least one valid placement
-          }
-        }
-      }
-    }
-    return true; // No valid placements found
-  }
-  List<Block> generateInitialBlocks({int count = 3}) {
-    final newBlocks = <Block>[];
-    for (int i = 0; i < count; i++) {
-      final block = BlockFactory.createRandomBlock(flame.Vector2.zero());
-      newBlocks.add(block);
-    }
-    return newBlocks;
-  }
-  GameSession generateNewBlocks(GameSession gameSession, {int count = 3}) {
-    final newBlocks = <Block>[];
+
+  /// Generate next block set for the game
+  List<Block> generateNextBlocks(GameSession gameSession) {
+    final random = math.Random();
+    final difficulty = gameSession.difficulty;
+    final level = gameSession.currentLevel;
     
-    for (int i = 0; i < count; i++) {
-      final block = BlockFactory.createRandomBlock(flame.Vector2.zero());
-      newBlocks.add(block);
+    // Determine number of blocks based on difficulty
+    int blockCount;
+    switch (difficulty) {
+      case GameDifficulty.easy:
+        blockCount = 2;
+        break;
+      case GameDifficulty.normal:
+        blockCount = 3;
+        break;
+      case GameDifficulty.hard:
+        blockCount = 4;
+        break;
+      case GameDifficulty.expert:
+        blockCount = 5;
+        break;
     }
     
-    return gameSession.copyWith(activeBlocks: newBlocks);
-  }
-  
-  List<flame.Vector2> getValidPlacements(GameSession gameSession, Block block) {
-    final validPlacements = <flame.Vector2>[];
+    final blocks = <Block>[];
+    final availableShapes = AppConstants.blockShapes;
     
-    for (int row = 0; row < 8; row++) {
-      for (int col = 0; col < 8; col++) {
-        if (canPlaceBlock(gameSession, block, row, col)) {
-          validPlacements.add(flame.Vector2(col.toDouble(), row.toDouble()));
-        }
-      }
+    for (int i = 0; i < blockCount; i++) {
+      final shapeIndex = random.nextInt(availableShapes.length);
+      final colorId = random.nextInt(7) + 1; // Colors 1-7
+      
+      blocks.add(Block(
+        id: 'block_${DateTime.now().millisecondsSinceEpoch}_$i',
+        shape: availableShapes[shapeIndex],
+        colorId: colorId,
+        size: _calculateBlockSize(availableShapes[shapeIndex]),
+      ));
     }
     
-    return validPlacements;
+    return blocks;
   }
-  
-  flame.Vector2? getBestPlacement(GameSession gameSession, Block block) {
-    final validPlacements = getValidPlacements(gameSession, block);
-    if (validPlacements.isEmpty) return null;
-    
-    // Simple heuristic: prefer positions that would complete lines
-    flame.Vector2? bestPlacement;
-    int bestScore = -1;
-    
-    for (final placement in validPlacements) {
-      final score = _evaluatePlacement(gameSession, block, placement);
-      if (score > bestScore) {
-        bestScore = score;
-        bestPlacement = placement;
-      }
-    }
-    
-    return bestPlacement;
-  }
-  
-  // High scores
-  Future<List<int>> getHighScores() async {
-    return await _repository.getHighScores();
-  }
-  
-  Future<bool> saveHighScore(int score) async {
-    return await _repository.saveHighScore(score);
-  }
-  
-  // Settings
-  Future<Map<String, dynamic>> getGameSettings() async {
-    return await _repository.getGameSettings();
-  }
-  
-  Future<bool> saveGameSettings(Map<String, dynamic> settings) async {
-    return await _repository.saveGameSettings(settings);
-  }
-  
-  // Daily rewards
-  Future<bool> canClaimDailyReward() async {
-    return await _repository.canClaimDailyReward();
-  }
-  
-  Future<bool> claimDailyReward() async {
-    return await _repository.claimDailyReward();
-  }
-  
-  // Private helper methods
-  int _calculateBlockScore(Block block, int level) {
-    final baseScore = GameConstants.baseScores['blockPlace']! * block.cellCount;
-    return (baseScore * level).round();
-  }
-  
-  int _calculateLineScore(int linesCleared, int columnsCleared, int combo, int level) {
-    int baseScore = 0;
-    
-    if (linesCleared == 1) {
-      baseScore = GameConstants.baseScores['singleLine']!;
-    } else if (linesCleared == 2) {
-      baseScore = GameConstants.baseScores['doubleLine']!;
-    } else if (linesCleared >= 3) {
-      baseScore = GameConstants.baseScores['tripleLine']!;
-    }
-    
-    // Add column clear bonus
-    baseScore += columnsCleared * GameConstants.baseScores['singleLine']!;
-    
-    // Apply combo multiplier
-    final comboIndex = combo.clamp(0, GameConstants.comboMultipliers.length - 1);
-    final multiplier = GameConstants.comboMultipliers[comboIndex];
-    
-    return (baseScore * multiplier * level).round();
-  }
-  
-  int _calculateLevel(int totalLinesCleared) {
-    return (totalLinesCleared / GameConstants.linesPerLevel).floor() + 1;
-  }
-  
-  bool _isPerfectClear(List<List<bool>> grid) {
-    for (final row in grid) {
-      for (final cell in row) {
-        if (cell) return false;
+
+  /// Check if game is over (no valid moves)
+  bool isGameOver(GameSession gameSession, List<Block> availableBlocks) {
+    for (final block in availableBlocks) {
+      if (_hasValidPlacement(gameSession, block)) {
+        return false;
       }
     }
     return true;
   }
-  
-  int _evaluatePlacement(GameSession gameSession, Block block, flame.Vector2 placement) {
-    // Simple evaluation: count how many lines would be completed
-    int score = 0;
-    
-    // Simulate placing the block
-    final tempGrid = List<List<bool>>.from(
-      gameSession.grid.map((row) => List<bool>.from(row))
-    );
-    
-    final occupiedCells = block.occupiedCells;
-    for (final cell in occupiedCells) {
-      final gridR = placement.y.toInt() + cell.y.toInt();
-      final gridC = placement.x.toInt() + cell.x.toInt();
-      if (gridR >= 0 && gridR < 8 && gridC >= 0 && gridC < 8) {
-        tempGrid[gridR][gridC] = true;
+
+  /// Get hint for best move
+  Map<String, dynamic>? getGameHint(GameSession gameSession, List<Block> availableBlocks) {
+    for (final block in availableBlocks) {
+      final bestPosition = _findBestPlacement(gameSession, block);
+      if (bestPosition != null) {
+        return {
+          'blockId': block.id,
+          'row': bestPosition.row,
+          'col': bestPosition.col,
+          'reason': 'Best scoring position',
+        };
       }
     }
+    return null;
+  }
+
+  // ========================================
+  // SCORING SYSTEM
+  // ========================================
+
+  /// Calculate score for placing a block
+  int _calculatePlacementScore(Block block, int level) {
+    final blockSize = block.shape.expand((row) => row).where((cell) => cell == 1).length;
+    return blockSize * 10 * level;
+  }
+
+  /// Calculate score for clearing lines
+  int _calculateLineClearScore(int linesCleared, int level) {
+    if (linesCleared == 0) return 0;
     
-    // Count completed lines
-    for (int row = 0; row < 8; row++) {
-      if (tempGrid[row].every((cell) => cell)) {
-        score += 100; // Row completion bonus
-      }
-    }
+    final baseScore = [0, 100, 300, 500, 800, 1200][math.min(linesCleared, 5)];
+    return baseScore * level;
+  }
+
+  /// Calculate level based on lines cleared
+  int _calculateLevel(int totalLinesCleared) {
+    return math.max(1, (totalLinesCleared ~/ 10) + 1);
+  }
+
+  /// Calculate block size
+  int _calculateBlockSize(List<List<int>> shape) {
+    return shape.expand((row) => row).where((cell) => cell == 1).length;
+  }
+
+  // ========================================
+  // HELPER METHODS
+  // ========================================
+
+  /// Check if block has any valid placement
+  bool _hasValidPlacement(GameSession gameSession, Block block) {
+    final gridSize = gameSession.gridState.length;
     
-    for (int col = 0; col < 8; col++) {
-      bool isComplete = true;
-      for (int row = 0; row < 8; row++) {
-        if (!tempGrid[row][col]) {
-          isComplete = false;
-          break;
+    for (int row = 0; row < gridSize; row++) {
+      for (int col = 0; col < gridSize; col++) {
+        if (canPlaceBlock(gameSession, block, row, col)) {
+          return true;
         }
       }
-      if (isComplete) {
-        score += 100; // Column completion bonus
-      }
     }
+    return false;
+  }
+
+  /// Find best placement for a block
+  ({int row, int col})? _findBestPlacement(GameSession gameSession, Block block) {
+    final gridSize = gameSession.gridState.length;
+    int bestScore = -1;
+    ({int row, int col})? bestPosition;
     
-    // Prefer positions closer to existing blocks
-    int adjacentBlocks = 0;
-    for (final cell in occupiedCells) {
-      final gridR = placement.y.toInt() + cell.y.toInt();
-      final gridC = placement.x.toInt() + cell.x.toInt();
-      
-      // Check adjacent cells
-      for (int dr = -1; dr <= 1; dr++) {
-        for (int dc = -1; dc <= 1; dc++) {
-          if (dr == 0 && dc == 0) continue;
-          final r = gridR + dr;
-          final c = gridC + dc;
-          if (r >= 0 && r < 8 && c >= 0 && c < 8 && gameSession.grid[r][c]) {
-            adjacentBlocks++;
+    for (int row = 0; row < gridSize; row++) {
+      for (int col = 0; col < gridSize; col++) {
+        if (canPlaceBlock(gameSession, block, row, col)) {
+          final score = _evaluatePlacement(gameSession, block, row, col);
+          if (score > bestScore) {
+            bestScore = score;
+            bestPosition = (row: row, col: col);
           }
         }
       }
     }
     
-    score += adjacentBlocks * 5; // Adjacency bonus
+    return bestPosition;
+  }
+
+  /// Evaluate placement score for AI hints
+  int _evaluatePlacement(GameSession gameSession, Block block, int row, int col) {
+    // Simple heuristic: prefer positions that complete lines
+    final tempSession = placeBlock(gameSession, block, row, col);
+    final (rowsCleared, colsCleared, _) = checkAndClearLines(tempSession);
     
-    return score;
+    // Score based on potential line clears
+    return (rowsCleared.length + colsCleared.length) * 100;
+  }
+
+  // ========================================
+  // STATISTICS & ANALYTICS
+  // ========================================
+
+  /// Get game statistics
+  Future<Map<String, dynamic>> getGameStatistics() async {
+    try {
+      return await _repository.getGameStatistics();
+    } catch (e) {
+      debugPrint('Failed to get game statistics: $e');
+      return {};
+    }
+  }
+
+  /// Record game analytics event
+  Future<bool> recordAnalyticsEvent(String eventName, Map<String, dynamic> data) async {
+    try {
+      return await _repository.recordAnalyticsEvent(eventName, data);
+    } catch (e) {
+      debugPrint('Failed to record analytics event: $e');
+      return false;
+    }
+  }
+
+  /// Get high scores
+  Future<List<Map<String, dynamic>>> getHighScores({int limit = 10}) async {
+    try {
+      return await _repository.getHighScores(limit: limit);
+    } catch (e) {
+      debugPrint('Failed to get high scores: $e');
+      return [];
+    }
+  }
+
+  /// Check if score is a high score
+  Future<bool> isHighScore(int score) async {
+    try {
+      return await _repository.isHighScore(score);
+    } catch (e) {
+      debugPrint('Failed to check if high score: $e');
+      return false;
+    }
+  }
+
+  /// Save final score
+  Future<bool> saveFinalScore(String sessionId, int finalScore, Map<String, dynamic>? completionData) async {
+    try {
+      return await _repository.saveFinalScore(
+        sessionId: sessionId,
+        finalScore: finalScore,
+        completionData: completionData,
+      );
+    } catch (e) {
+      debugPrint('Failed to save final score: $e');
+      return false;
+    }
   }
 }

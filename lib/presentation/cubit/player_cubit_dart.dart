@@ -1,109 +1,14 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:developer' as developer;
 import 'package:bloc/bloc.dart';
-import 'package:equatable/equatable.dart';
-import 'package:puzzle_box/domain/entities/player_stats_entity.dart';
-import 'package:puzzle_box/domain/entities/achievement_entity.dart';
-import 'package:puzzle_box/domain/entities/power_up_entity.dart';
-import 'package:puzzle_box/domain/usecases/achievement_usecases_dart.dart';
-import 'package:puzzle_box/domain/usecases/player_usecases.dart';
 import 'package:puzzle_box/core/constants/app_constants.dart';
-
-// Player state status enumeration
-enum PlayerStateStatus {
-  initial,
-  loading,
-  loaded,
-  updating,
-  error,
-}
-
-// Player state model
-class PlayerState extends Equatable {
-  final PlayerStateStatus status;
-  final PlayerStats? playerStats;
-  final List<Achievement> achievements;
-  final List<Achievement> unlockedAchievements;
-  final List<Achievement> recentUnlocks;
-  final bool hasUnseenAchievements;
-  final int coinsEarned;
-  final int totalCoinsEarned;
-  final String? errorMessage;
-  final bool isNewPlayer;
-  final DateTime? lastDailyBonusTime;
-  final int dailyStreakCount;
-  final Map<String, int> achievementProgress;
-
-  const PlayerState({
-    this.status = PlayerStateStatus.initial,
-    this.playerStats,
-    this.achievements = const [],
-    this.unlockedAchievements = const [],
-    this.recentUnlocks = const [],
-    this.hasUnseenAchievements = false,
-    this.coinsEarned = 0,
-    this.totalCoinsEarned = 0,
-    this.errorMessage,
-    this.isNewPlayer = false,
-    this.lastDailyBonusTime,
-    this.dailyStreakCount = 0,
-    this.achievementProgress = const {},
-  });
-
-  bool get isDataLoaded => status == PlayerStateStatus.loaded;
-  bool get isUpdating => status == PlayerStateStatus.updating;
-  bool get isLoading => status == PlayerStateStatus.loading;
-  bool get hasError => status == PlayerStateStatus.error;
-
-  PlayerState copyWith({
-    PlayerStateStatus? status,
-    PlayerStats? playerStats,
-    List<Achievement>? achievements,
-    List<Achievement>? unlockedAchievements,
-    List<Achievement>? recentUnlocks,
-    bool? hasUnseenAchievements,
-    int? coinsEarned,
-    int? totalCoinsEarned,
-    String? errorMessage,
-    bool? isNewPlayer,
-    DateTime? lastDailyBonusTime,
-    int? dailyStreakCount,
-    Map<String, int>? achievementProgress,
-  }) {
-    return PlayerState(
-      status: status ?? this.status,
-      playerStats: playerStats ?? this.playerStats,
-      achievements: achievements ?? this.achievements,
-      unlockedAchievements: unlockedAchievements ?? this.unlockedAchievements,
-      recentUnlocks: recentUnlocks ?? this.recentUnlocks,
-      hasUnseenAchievements: hasUnseenAchievements ?? this.hasUnseenAchievements,
-      coinsEarned: coinsEarned ?? this.coinsEarned,
-      totalCoinsEarned: totalCoinsEarned ?? this.totalCoinsEarned,
-      errorMessage: errorMessage ?? this.errorMessage,
-      isNewPlayer: isNewPlayer ?? this.isNewPlayer,
-      lastDailyBonusTime: lastDailyBonusTime ?? this.lastDailyBonusTime,
-      dailyStreakCount: dailyStreakCount ?? this.dailyStreakCount,
-      achievementProgress: achievementProgress ?? this.achievementProgress,
-    );
-  }
-
-  @override
-  List<Object?> get props => [
-        status,
-        playerStats,
-        achievements,
-        unlockedAchievements,
-        recentUnlocks,
-        hasUnseenAchievements,
-        coinsEarned,
-        totalCoinsEarned,
-        errorMessage,
-        isNewPlayer,
-        lastDailyBonusTime,
-        dailyStreakCount,
-        achievementProgress,
-      ];
-}
+import 'package:puzzle_box/core/state/player_state.dart';
+import 'package:puzzle_box/domain/entities/achievement_entity.dart';
+import 'package:puzzle_box/domain/entities/player_stats_entity.dart';
+import 'package:puzzle_box/domain/entities/power_up_entity.dart';
+import 'package:puzzle_box/domain/usecases/player_usecases.dart';
+import 'package:puzzle_box/domain/usecases/achievement_usecases_dart.dart';
 
 /// PlayerCubit manages player data, statistics, achievements, and progression.
 /// Handles player profile, coins, achievements, and cross-session data persistence.
@@ -115,9 +20,11 @@ class PlayerCubit extends Cubit<PlayerState> {
   // Timers for periodic operations
   Timer? _dailyBonusTimer;
   Timer? _achievementCheckTimer;
+  Timer? _saveTimer;
   
   // Achievement tracking
   final Set<String> _pendingAchievements = {};
+  final Map<String, double> _achievementProgress = {};
 
   PlayerCubit(
     this._playerUseCases,
@@ -130,6 +37,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<void> close() async {
     _dailyBonusTimer?.cancel();
     _achievementCheckTimer?.cancel();
+    _saveTimer?.cancel();
     await super.close();
   }
 
@@ -138,6 +46,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     developer.log('PlayerCubit initialized', name: 'PlayerCubit');
     _setupDailyBonusTimer();
     _setupAchievementChecker();
+    _setupAutoSave();
   }
 
   // ========================================
@@ -152,7 +61,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       
       // Load existing player data
       final playerStats = await _playerUseCases.loadPlayerStats();
-      final achievements = await _achievementUseCases.getPlayerAchievements();
+      final achievements = await _playerUseCases.getAchievements();
       
       // Check if this is a new player
       final isNewPlayer = playerStats == null;
@@ -161,23 +70,33 @@ class PlayerCubit extends Cubit<PlayerState> {
       final stats = playerStats ?? await _createNewPlayerStats();
       
       // Load achievement progress
-      final achievementProgress = await _achievementUseCases.getAchievementProgress();
+      final achievementProgress = <String, double>{};
+      for (final achievement in achievements) {
+        achievementProgress[achievement.id] = achievement.currentProgress.toDouble();
+      }
+      
+      // Get unlocked achievements
+      final unlockedAchievements = achievements.where((a) => a.isUnlocked).toList();
       
       emit(state.copyWith(
         status: PlayerStateStatus.loaded,
         playerStats: stats,
         achievements: achievements,
+        unlockedAchievements: unlockedAchievements,
+        hasUnseenAchievements: unlockedAchievements.any((a) => !a.hasBeenSeen),
         isNewPlayer: isNewPlayer,
         achievementProgress: achievementProgress,
+        totalCoinsEarned: stats.totalCoinsEarned,
+        dailyStreakCount: await _playerUseCases.getPlayStreak(),
       ));
       
       // Check for daily bonus eligibility
-      _checkDailyBonus();
+      await _checkDailyBonus();
       
       // Check for pending achievements
       await _checkPendingAchievements();
       
-      developer.log('Player initialized - New: $isNewPlayer, Coins: ${stats.totalCoins}', name: 'PlayerCubit');
+      developer.log('Player initialized - New: $isNewPlayer, Coins: ${stats.currentCoins}', name: 'PlayerCubit');
       
     } catch (e) {
       developer.log('Failed to initialize player: $e', name: 'PlayerCubit');
@@ -190,8 +109,8 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   /// Create new player stats with default values
   Future<PlayerStats> _createNewPlayerStats() async {
-    final newStats = PlayerStats.initial();
-    await _playerUseCases.savePlayerStats(newStats);
+    const playerId = 'player_001'; // Could be generated or from auth system
+    final newStats = await _playerUseCases.createNewPlayer(playerId);
     return newStats;
   }
 
@@ -206,7 +125,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     required int linesCleared,
     required int blocksPlaced,
     required Duration gameDuration,
-    required int usedPowerUps,
+    required Map<String, int> usedPowerUps,
     bool hadPerfectClear = false,
     bool usedUndo = false,
   }) async {
@@ -216,43 +135,54 @@ class PlayerCubit extends Cubit<PlayerState> {
       emit(state.copyWith(status: PlayerStateStatus.updating));
       
       // Calculate coins earned from this game
-      final coinsEarned = _calculateGameCoins(finalScore, level, linesCleared);
+      final coinsEarned = _calculateGameCoins(finalScore, level, linesCleared, hadPerfectClear);
       
       // Update player stats
       final currentStats = state.playerStats!;
-      final updatedStats = currentStats.afterGameSession(
-        gameScore: finalScore,
-        blocksPlaced: blocksPlaced,
-        linesCleared: linesCleared,
-        maxCombo: 0, // Would be passed from game state
-        maxStreak: 0, // Would be passed from game state
-        sessionTime: gameDuration,
-        coinsEarned: coinsEarned,
-        hadPerfectClear: hadPerfectClear,
+      final updatedStats = currentStats.copyWith(
+        totalScore: currentStats.totalScore + finalScore,
+        bestScore: math.max(currentStats.bestScore, finalScore),
+        totalGamesPlayed: currentStats.totalGamesPlayed + 1,
+        totalTimePlayed: currentStats.totalTimePlayed + gameDuration,
+        totalBlocksPlaced: currentStats.totalBlocksPlaced + blocksPlaced,
+        totalLinesCleared: currentStats.totalLinesCleared + linesCleared,
+        currentCoins: currentStats.currentCoins + coinsEarned,
+        totalCoinsEarned: currentStats.totalCoinsEarned + coinsEarned,
+        lastPlayDate: DateTime.now(),
       );
 
       // Save updated stats
       await _playerUseCases.savePlayerStats(updatedStats);
       
-      // Update state
-      emit(state.copyWith(
-        status: PlayerStateStatus.loaded,
-        playerStats: updatedStats,
-        coinsEarned: coinsEarned,
-        totalCoinsEarned: state.totalCoinsEarned + coinsEarned,
-      ));
-
-      // Check for achievements
-      await _checkGameCompletionAchievements(
+      // Add score to recent scores
+      await _playerUseCases.addScore(finalScore);
+      
+      // Check for new achievements
+      final newAchievements = await _checkGameAchievements(
         finalScore: finalScore,
         level: level,
         linesCleared: linesCleared,
         blocksPlaced: blocksPlaced,
         hadPerfectClear: hadPerfectClear,
         usedUndo: usedUndo,
+        updatedStats: updatedStats,
       );
-
-      developer.log('Game completion processed - Score: $finalScore, Coins: $coinsEarned', name: 'PlayerCubit');
+      
+      // Update play streak
+      await _playerUseCases.updatePlayStreak();
+      final newStreak = await _playerUseCases.getPlayStreak();
+      
+      emit(state.copyWith(
+        status: PlayerStateStatus.loaded,
+        playerStats: updatedStats,
+        coinsEarned: coinsEarned,
+        totalCoinsEarned: updatedStats.totalCoinsEarned,
+        recentUnlocks: newAchievements,
+        hasUnseenAchievements: newAchievements.isNotEmpty || state.hasUnseenAchievements,
+        dailyStreakCount: newStreak,
+      ));
+      
+      developer.log('Game completion processed - Score: $finalScore, Coins: +$coinsEarned', name: 'PlayerCubit');
       
     } catch (e) {
       developer.log('Failed to process game completion: $e', name: 'PlayerCubit');
@@ -263,311 +193,308 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
   }
 
+  /// Calculate coins earned from game performance
+  int _calculateGameCoins(int score, int level, int linesCleared, bool hadPerfectClear) {
+    int baseCoins = (score / 100).floor();
+    
+    // Level bonus
+    baseCoins += level * 5;
+    
+    // Lines cleared bonus
+    baseCoins += linesCleared * 2;
+    
+    // Perfect clear bonus
+    if (hadPerfectClear) {
+      baseCoins += 50;
+    }
+    
+    return math.max(1, baseCoins);
+  }
+
   // ========================================
   // ACHIEVEMENT MANAGEMENT
   // ========================================
 
-  /// Update achievement progress for a specific achievement
-  Future<void> updateAchievementProgress(String achievementId, int progress) async {
-    try {
-      final currentProgress = state.achievementProgress[achievementId] ?? 0;
-      final newProgress = currentProgress + progress;
-      
-      // Update progress map
-      final updatedProgress = Map<String, int>.from(state.achievementProgress);
-      updatedProgress[achievementId] = newProgress;
-      
-      emit(state.copyWith(achievementProgress: updatedProgress));
-      
-      // Check if achievement is now unlocked
-      final achievement = await _achievementUseCases.getAchievementById(achievementId);
-      if (achievement != null && newProgress >= achievement.targetValue) {
-        await _unlockAchievement(achievement);
-      }
-      
-      // Save progress
-      await _achievementUseCases.saveAchievementProgress(updatedProgress);
-      
-    } catch (e) {
-      developer.log('Failed to update achievement progress: $e', name: 'PlayerCubit');
-    }
-  }
-
-  /// Unlock a specific achievement
-  Future<void> _unlockAchievement(Achievement achievement) async {
-    try {
-      // Check if already unlocked
-      if (state.achievements.any((a) => a.id == achievement.id)) {
-        return;
-      }
-
-      // Add to unlocked achievements
-      final updatedAchievements = List<Achievement>.from(state.achievements);
-      updatedAchievements.add(achievement);
-      
-      // Add coins reward
-      final coinsReward = achievement.coinReward;
-      PlayerStats? updatedStats;
-      
-      if (state.playerStats != null && coinsReward > 0) {
-        updatedStats = state.playerStats!.copyWith(
-          totalCoins: state.playerStats!.totalCoins + coinsReward,
-          totalAchievementsUnlocked: updatedAchievements.length,
-        );
-        await _playerUseCases.savePlayerStats(updatedStats);
-      }
-
-      // Update state
-      emit(state.copyWith(
-        playerStats: updatedStats ?? state.playerStats,
-        achievements: updatedAchievements,
-        recentUnlocks: [achievement],
-        hasUnseenAchievements: true,
-        coinsEarned: coinsReward,
-        totalCoinsEarned: state.totalCoinsEarned + coinsReward,
-      ));
-
-      // Save achievements
-      await _achievementUseCases.savePlayerAchievements(updatedAchievements);
-
-      developer.log('Achievement unlocked: ${achievement.title} (+$coinsReward coins)', name: 'PlayerCubit');
-      
-    } catch (e) {
-      developer.log('Failed to unlock achievement: $e', name: 'PlayerCubit');
-    }
-  }
-
-  /// Check for achievements after game completion
-  Future<void> _checkGameCompletionAchievements({
+  /// Check for achievements based on game completion
+  Future<List<Achievement>> _checkGameAchievements({
     required int finalScore,
     required int level,
     required int linesCleared,
     required int blocksPlaced,
     required bool hadPerfectClear,
     required bool usedUndo,
+    required PlayerStats updatedStats,
   }) async {
+    final newlyUnlocked = <Achievement>[];
+    
     try {
       // Score-based achievements
-      await updateAchievementProgress('score_1000', finalScore >= 1000 ? 1 : 0);
-      await updateAchievementProgress('score_5000', finalScore >= 5000 ? 1 : 0);
-      await updateAchievementProgress('score_10000', finalScore >= 10000 ? 1 : 0);
+      if (finalScore >= 1000 && !_hasAchievement('score_1000')) {
+        newlyUnlocked.add(await _unlockAchievement('score_1000'));
+      }
+      if (finalScore >= 5000 && !_hasAchievement('score_5000')) {
+        newlyUnlocked.add(await _unlockAchievement('score_5000'));
+      }
+      if (finalScore >= 10000 && !_hasAchievement('score_10000')) {
+        newlyUnlocked.add(await _unlockAchievement('score_10000'));
+      }
       
-      // Level achievements
-      await updateAchievementProgress('level_5', level >= 5 ? 1 : 0);
-      await updateAchievementProgress('level_10', level >= 10 ? 1 : 0);
+      // Game count achievements
+      if (updatedStats.totalGamesPlayed >= 10 && !_hasAchievement('games_10')) {
+        newlyUnlocked.add(await _unlockAchievement('games_10'));
+      }
+      if (updatedStats.totalGamesPlayed >= 50 && !_hasAchievement('games_50')) {
+        newlyUnlocked.add(await _unlockAchievement('games_50'));
+      }
+      if (updatedStats.totalGamesPlayed >= 100 && !_hasAchievement('games_100')) {
+        newlyUnlocked.add(await _unlockAchievement('games_100'));
+      }
       
       // Lines cleared achievements
-      await updateAchievementProgress('lines_100', linesCleared);
-      await updateAchievementProgress('lines_500', linesCleared);
-      
-      // Perfect clear achievements
-      if (hadPerfectClear) {
-        await updateAchievementProgress('perfect_clear', 1);
-        await updateAchievementProgress('perfect_clear_5', 1);
+      if (updatedStats.totalLinesCleared >= 100 && !_hasAchievement('lines_100')) {
+        newlyUnlocked.add(await _unlockAchievement('lines_100'));
+      }
+      if (updatedStats.totalLinesCleared >= 500 && !_hasAchievement('lines_500')) {
+        newlyUnlocked.add(await _unlockAchievement('lines_500'));
       }
       
-      // Efficiency achievements
-      if (!usedUndo) {
-        await updateAchievementProgress('no_undo_game', 1);
+      // Perfect clear achievement
+      if (hadPerfectClear && !_hasAchievement('perfect_clear')) {
+        newlyUnlocked.add(await _unlockAchievement('perfect_clear'));
       }
       
-      // Games played achievements
-      await updateAchievementProgress('games_10', 1);
-      await updateAchievementProgress('games_50', 1);
-      await updateAchievementProgress('games_100', 1);
+      // First game achievement
+      if (updatedStats.totalGamesPlayed == 1 && !_hasAchievement('first_game')) {
+        newlyUnlocked.add(await _unlockAchievement('first_game'));
+      }
+      
+      // Update achievement progress for incremental ones
+      await _updateAchievementProgress(updatedStats);
       
     } catch (e) {
-      developer.log('Failed to check game completion achievements: $e', name: 'PlayerCubit');
+      developer.log('Failed to check game achievements: $e', name: 'PlayerCubit');
     }
+    
+    return newlyUnlocked;
+  }
+
+  /// Update progress for incremental achievements
+  Future<void> _updateAchievementProgress(PlayerStats stats) async {
+    final progressUpdates = <String, double>{
+      'score_master': stats.bestScore / 100000.0, // Target: 100K points
+      'time_player': stats.totalTimePlayed.inHours / 100.0, // Target: 100 hours
+      'block_master': stats.totalBlocksPlaced / 10000.0, // Target: 10K blocks
+      'line_master': stats.totalLinesCleared / 1000.0, // Target: 1K lines
+    };
+    
+    for (final entry in progressUpdates.entries) {
+      _achievementProgress[entry.key] = math.min(1.0, entry.value);
+    }
+    
+    emit(state.copyWith(achievementProgress: Map.from(_achievementProgress)));
+  }
+
+  /// Check if player has a specific achievement
+  bool _hasAchievement(String achievementId) {
+    return state.unlockedAchievements.any((a) => a.id == achievementId);
+  }
+
+  /// Unlock a specific achievement
+  Future<Achievement> _unlockAchievement(String achievementId) async {
+    await _playerUseCases.unlockAchievement(achievementId);
+    final achievement = state.achievements.firstWhere((a) => a.id == achievementId);
+    return achievement.unlock();
   }
 
   /// Mark achievements as seen
-  void markAchievementsSeen() {
+  void markAchievementsAsSeen() {
     emit(state.copyWith(
       hasUnseenAchievements: false,
       recentUnlocks: [],
     ));
   }
 
-  /// Check for pending achievements (called periodically)
-  Future<void> _checkPendingAchievements() async {
-    if (state.playerStats == null) return;
-    
-    try {
-      final pendingAchievements = await _achievementUseCases.checkAllAchievements(
-        playerStats: state.playerStats!,
-      );
-      
-      for (final achievement in pendingAchievements) {
-        await _unlockAchievement(achievement);
-      }
-      
-    } catch (e) {
-      developer.log('Failed to check pending achievements: $e', name: 'PlayerCubit');
-    }
-  }
-
   // ========================================
   // COIN MANAGEMENT
   // ========================================
 
-  /// Add coins to player account
-  Future<void> addCoins(int amount, {String source = 'unknown'}) async {
-    if (amount <= 0 || state.playerStats == null) return;
-
+  /// Add coins to player balance
+  Future<void> addCoins(int amount) async {
+    if (state.playerStats == null || amount <= 0) return;
+    
     try {
-      final updatedStats = state.playerStats!.copyWith(
-        totalCoins: state.playerStats!.totalCoins + amount,
-      );
-
-      await _playerUseCases.savePlayerStats(updatedStats);
-
-      emit(state.copyWith(
-        playerStats: updatedStats,
-        coinsEarned: amount,
-        totalCoinsEarned: state.totalCoinsEarned + amount,
-      ));
-
-      developer.log('Added $amount coins from $source', name: 'PlayerCubit');
-      
+      final success = await _playerUseCases.addCoins(amount);
+      if (success) {
+        final updatedStats = state.playerStats!.copyWith(
+          currentCoins: state.playerStats!.currentCoins + amount,
+          totalCoinsEarned: state.playerStats!.totalCoinsEarned + amount,
+        );
+        
+        await _playerUseCases.savePlayerStats(updatedStats);
+        
+        emit(state.copyWith(
+          playerStats: updatedStats,
+          coinsEarned: state.coinsEarned + amount,
+          totalCoinsEarned: updatedStats.totalCoinsEarned,
+        ));
+        
+        developer.log('Added $amount coins, total: ${updatedStats.currentCoins}', name: 'PlayerCubit');
+      }
     } catch (e) {
       developer.log('Failed to add coins: $e', name: 'PlayerCubit');
     }
   }
 
-  /// Spend coins from player account
-  Future<bool> spendCoins(int amount, {String purpose = 'unknown'}) async {
-    if (amount <= 0 || state.playerStats == null) return false;
-
+  /// Spend coins from player balance
+  Future<bool> spendCoins(int amount) async {
+    if (state.playerStats == null || amount <= 0) return false;
+    
     try {
-      final currentCoins = state.playerStats!.totalCoins;
-      if (currentCoins < amount) {
-        developer.log('Insufficient coins: $currentCoins < $amount', name: 'PlayerCubit');
+      final hasEnough = await _playerUseCases.hasEnoughCoins(amount);
+      if (!hasEnough) {
+        emit(state.copyWith(errorMessage: 'Insufficient coins'));
         return false;
       }
-
-      final updatedStats = state.playerStats!.copyWith(
-        totalCoins: currentCoins - amount,
-      );
-
-      await _playerUseCases.savePlayerStats(updatedStats);
-
-      emit(state.copyWith(playerStats: updatedStats));
-
-      developer.log('Spent $amount coins for $purpose', name: 'PlayerCubit');
-      return true;
       
+      final success = await _playerUseCases.spendCoins(amount);
+      if (success) {
+        final updatedStats = state.playerStats!.copyWith(
+          currentCoins: state.playerStats!.currentCoins - amount,
+        );
+        
+        await _playerUseCases.savePlayerStats(updatedStats);
+        
+        emit(state.copyWith(
+          playerStats: updatedStats,
+          errorMessage: null,
+        ));
+        
+        developer.log('Spent $amount coins, remaining: ${updatedStats.currentCoins}', name: 'PlayerCubit');
+        return true;
+      }
     } catch (e) {
       developer.log('Failed to spend coins: $e', name: 'PlayerCubit');
-      return false;
+      emit(state.copyWith(errorMessage: 'Failed to spend coins'));
     }
-  }
-
-  // ========================================
-  // DAILY BONUS SYSTEM
-  // ========================================
-
-  /// Check and grant daily bonus if eligible
-  void _checkDailyBonus() {
-    final now = DateTime.now();
-    final lastBonus = state.lastDailyBonusTime;
     
-    if (lastBonus == null || _isDifferentDay(lastBonus, now)) {
-      _grantDailyBonus();
-    }
+    return false;
   }
 
-  /// Grant daily bonus to player
-  Future<void> _grantDailyBonus() async {
+  /// Check daily bonus eligibility and claim if available
+  Future<void> _checkDailyBonus() async {
     try {
-      final dailyBonus = AppConstants.dailyBonusCoins;
-      final streakBonus = _calculateStreakBonus();
-      final totalBonus = dailyBonus + streakBonus;
-      
-      await addCoins(totalBonus, source: 'daily_bonus');
-      
-      emit(state.copyWith(
-        lastDailyBonusTime: DateTime.now(),
-        dailyStreakCount: state.dailyStreakCount + 1,
-      ));
-      
-      developer.log('Daily bonus granted: $totalBonus coins (streak: ${state.dailyStreakCount})', name: 'PlayerCubit');
-      
+      final canClaim = await _playerUseCases.canClaimDailyBonus();
+      if (canClaim) {
+        final result = await _playerUseCases.claimDailyBonus();
+        if (result['success'] == true) {
+          final bonusAmount = result['coinsEarned'] as int;
+          await addCoins(bonusAmount);
+          
+          emit(state.copyWith(
+            lastDailyBonusTime: DateTime.now(),
+          ));
+          
+          developer.log('Daily bonus claimed: $bonusAmount coins', name: 'PlayerCubit');
+        }
+      }
     } catch (e) {
-      developer.log('Failed to grant daily bonus: $e', name: 'PlayerCubit');
+      developer.log('Failed to check daily bonus: $e', name: 'PlayerCubit');
     }
-  }
-
-  /// Calculate streak bonus
-  int _calculateStreakBonus() {
-    final streak = state.dailyStreakCount;
-    if (streak >= 7) return 50; // Weekly bonus
-    if (streak >= 3) return 20; // 3-day bonus
-    return 0;
-  }
-
-  /// Check if two dates are different days
-  bool _isDifferentDay(DateTime date1, DateTime date2) {
-    return date1.year != date2.year ||
-           date1.month != date2.month ||
-           date1.day != date2.day;
-  }
-
-  // ========================================
-  // STATISTICS AND CALCULATIONS
-  // ========================================
-
-  /// Calculate coins earned from game completion
-  int _calculateGameCoins(int score, int level, int linesCleared) {
-    const baseCoins = 10;
-    
-    // Score bonus (1 coin per 100 points)
-    final scoreBonus = (score / 100).floor();
-    
-    // Level bonus
-    final levelBonus = level * 2;
-    
-    // Lines bonus
-    final linesBonus = linesCleared;
-    
-    return baseCoins + scoreBonus + levelBonus + linesBonus;
   }
 
   // ========================================
   // POWER-UP MANAGEMENT
   // ========================================
 
-  /// Purchase a power-up with coins
-  Future<bool> purchasePowerUp(PowerUpType powerUpType, int quantity) async {
+  /// Purchase power-up with coins
+  Future<bool> purchasePowerUp(PowerUpType type, int quantity) async {
     try {
-      final cost = _getPowerUpCost(powerUpType) * quantity;
+      final result = await _playerUseCases.purchasePowerUp(type, quantity);
       
-      if (await spendCoins(cost, purpose: 'power_up_${powerUpType.name}')) {
-        // Power-ups would be managed by the game cubit
-        developer.log('Purchased $quantity ${powerUpType.name} power-ups for $cost coins', name: 'PlayerCubit');
+      if (result['success'] == true) {
+        final cost = result['cost'] as int;
+        developer.log('Power-up purchased: $type x$quantity for $cost coins', name: 'PlayerCubit');
         return true;
+      } else {
+        emit(state.copyWith(errorMessage: result['reason'] as String));
+        return false;
       }
-      
-      return false;
     } catch (e) {
       developer.log('Failed to purchase power-up: $e', name: 'PlayerCubit');
+      emit(state.copyWith(errorMessage: 'Failed to purchase power-up'));
       return false;
     }
   }
 
-  /// Get cost of a power-up
-  int _getPowerUpCost(PowerUpType powerUpType) {
-    switch (powerUpType) {
-      case PowerUpType.undo:
-        return 50;
-      case PowerUpType.hint:
-        return 30;
-      case PowerUpType.shuffle:
-        return 100;
-      case PowerUpType.bomb:
-        return 150;
-      case PowerUpType.freeze:
-        return 200;
+  /// Use a power-up
+  Future<bool> usePowerUp(PowerUpType type) async {
+    try {
+      final success = await _playerUseCases.usePowerUp(type);
+      if (success) {
+        developer.log('Power-up used: $type', name: 'PlayerCubit');
+      }
+      return success;
+    } catch (e) {
+      developer.log('Failed to use power-up: $e', name: 'PlayerCubit');
+      return false;
+    }
+  }
+
+  /// Get power-up inventory
+  Future<Map<PowerUpType, int>> getPowerUpInventory() async {
+    try {
+      return await _playerUseCases.getPowerUpInventory();
+    } catch (e) {
+      developer.log('Failed to get power-up inventory: $e', name: 'PlayerCubit');
+      return {};
+    }
+  }
+
+  // ========================================
+  // PLAYER SETTINGS
+  // ========================================
+
+  /// Update player setting
+  Future<void> updatePlayerSetting(String key, dynamic value) async {
+    try {
+      await _playerUseCases.updatePlayerSetting(key, value);
+      developer.log('Player setting updated: $key = $value', name: 'PlayerCubit');
+    } catch (e) {
+      developer.log('Failed to update player setting: $e', name: 'PlayerCubit');
+    }
+  }
+
+  /// Get player setting
+  Future<T?> getPlayerSetting<T>(String key, {T? defaultValue}) async {
+    try {
+      return await _playerUseCases.getPlayerSetting<T>(key, defaultValue: defaultValue);
+    } catch (e) {
+      developer.log('Failed to get player setting: $e', name: 'PlayerCubit');
+      return defaultValue;
+    }
+  }
+
+  // ========================================
+  // ANALYTICS & STATISTICS
+  // ========================================
+
+  /// Get comprehensive player analytics
+  Future<Map<String, dynamic>> getPlayerAnalytics() async {
+    try {
+      return await _playerUseCases.getPlayerAnalytics();
+    } catch (e) {
+      developer.log('Failed to get player analytics: $e', name: 'PlayerCubit');
+      return {};
+    }
+  }
+
+  /// Get recent scores
+  Future<List<int>> getRecentScores({int limit = 10}) async {
+    try {
+      return await _playerUseCases.getRecentScores(limit: limit);
+    } catch (e) {
+      developer.log('Failed to get recent scores: $e', name: 'PlayerCubit');
+      return [];
     }
   }
 
@@ -589,6 +516,50 @@ class PlayerCubit extends Cubit<PlayerState> {
     });
   }
 
+  /// Setup auto-save for player data
+  void _setupAutoSave() {
+    _saveTimer = Timer.periodic(const Duration(minutes: 3), (_) {
+      _autoSavePlayerData();
+    });
+  }
+
+  /// Check pending achievements
+  Future<void> _checkPendingAchievements() async {
+    if (_pendingAchievements.isEmpty) return;
+    
+    try {
+      for (final achievementId in List.from(_pendingAchievements)) {
+        // Check if achievement should be unlocked
+        final shouldUnlock = await _checkAchievementCondition(achievementId);
+        if (shouldUnlock) {
+          await _unlockAchievement(achievementId);
+          _pendingAchievements.remove(achievementId);
+        }
+      }
+    } catch (e) {
+      developer.log('Failed to check pending achievements: $e', name: 'PlayerCubit');
+    }
+  }
+
+  /// Check if achievement condition is met
+  Future<bool> _checkAchievementCondition(String achievementId) async {
+    // Implementation would check specific conditions for each achievement
+    // This is a simplified version
+    return false;
+  }
+
+  /// Auto-save player data
+  Future<void> _autoSavePlayerData() async {
+    if (state.playerStats != null) {
+      try {
+        await _playerUseCases.savePlayerStats(state.playerStats!);
+        developer.log('Player data auto-saved', name: 'PlayerCubit');
+      } catch (e) {
+        developer.log('Auto-save failed: $e', name: 'PlayerCubit');
+      }
+    }
+  }
+
   // ========================================
   // DATA MANAGEMENT
   // ========================================
@@ -598,11 +569,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     try {
       emit(state.copyWith(status: PlayerStateStatus.loading));
       
-      // Clear stored data
-      await _playerUseCases.clearPlayerData();
-      await _achievementUseCases.clearAchievements();
-      
-      // Create new player
+      // Create new player stats
       final newStats = await _createNewPlayerStats();
       
       emit(state.copyWith(
@@ -616,6 +583,7 @@ class PlayerCubit extends Cubit<PlayerState> {
         totalCoinsEarned: 0,
         isNewPlayer: true,
         achievementProgress: {},
+        dailyStreakCount: 0,
       ));
       
       developer.log('Player data reset successfully', name: 'PlayerCubit');
@@ -637,6 +605,54 @@ class PlayerCubit extends Cubit<PlayerState> {
       'achievementProgress': state.achievementProgress,
       'lastDailyBonusTime': state.lastDailyBonusTime?.toIso8601String(),
       'dailyStreakCount': state.dailyStreakCount,
+      'isNewPlayer': state.isNewPlayer,
+      'exportedAt': DateTime.now().toIso8601String(),
+    };
+  }
+
+  /// Import player data from backup
+  Future<void> importPlayerData(Map<String, dynamic> data) async {
+    try {
+      emit(state.copyWith(status: PlayerStateStatus.loading));
+      
+      // Parse and validate data
+      final playerStatsData = data['playerStats'] as Map<String, dynamic>?;
+      if (playerStatsData != null) {
+        final playerStats = PlayerStats.fromJson(playerStatsData);
+        await _playerUseCases.savePlayerStats(playerStats);
+      }
+      
+      // Reinitialize with imported data
+      await initializePlayer();
+      
+      developer.log('Player data imported successfully', name: 'PlayerCubit');
+      
+    } catch (e) {
+      developer.log('Failed to import player data: $e', name: 'PlayerCubit');
+      emit(state.copyWith(
+        status: PlayerStateStatus.error,
+        errorMessage: 'Failed to import player data: $e',
+      ));
+    }
+  }
+
+  /// Clear any error state
+  void clearError() {
+    emit(state.copyWith(errorMessage: null));
+  }
+
+  /// Get current player status summary
+  Map<String, dynamic> getPlayerStatus() {
+    return {
+      'isLoaded': state.status == PlayerStateStatus.loaded,
+      'isNewPlayer': state.isNewPlayer,
+      'currentCoins': state.playerStats?.currentCoins ?? 0,
+      'totalGamesPlayed': state.playerStats?.totalGamesPlayed ?? 0,
+      'bestScore': state.playerStats?.bestScore ?? 0,
+      'achievementsUnlocked': state.unlockedAchievements.length,
+      'totalAchievements': state.achievements.length,
+      'hasUnseenAchievements': state.hasUnseenAchievements,
+      'dailyStreak': state.dailyStreakCount,
     };
   }
 }

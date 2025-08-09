@@ -17,6 +17,7 @@ class UICubit extends Cubit<UIState> {
   // Timers for UI management
   Timer? _notificationTimer;
   Timer? _autoHideTimer;
+  Timer? _loadingTimer;
 
   UICubit(
     this._audioService,
@@ -29,6 +30,7 @@ class UICubit extends Cubit<UIState> {
   Future<void> close() async {
     _notificationTimer?.cancel();
     _autoHideTimer?.cancel();
+    _loadingTimer?.cancel();
     await super.close();
   }
 
@@ -102,11 +104,11 @@ class UICubit extends Cubit<UIState> {
   }
 
   /// Show game over overlay
-  void showGameOverOverlay({Map<String, dynamic>? gameResults}) {
+  void showGameOverOverlay({Map<String, dynamic>? gameOverData}) {
     emit(state.copyWith(
       showGameOverOverlay: true,
       overlayType: OverlayType.gameOver,
-      gameOverResults: gameResults,
+      gameOverResults: gameOverData,
     ));
   }
 
@@ -135,19 +137,15 @@ class UICubit extends Cubit<UIState> {
     ));
   }
 
-  // ========================================
-  // LOADING STATE MANAGEMENT
-  // ========================================
-
-  /// Show loading indicator
+  /// Show loading overlay
   void showLoading({String? message}) {
     emit(state.copyWith(
       isLoading: true,
-      loadingMessage: message ?? 'Loading...',
+      loadingMessage: message,
     ));
   }
 
-  /// Hide loading indicator
+  /// Hide loading overlay
   void hideLoading() {
     emit(state.copyWith(
       isLoading: false,
@@ -155,52 +153,112 @@ class UICubit extends Cubit<UIState> {
     ));
   }
 
-  // ========================================
-  // ERROR HANDLING
-  // ========================================
-
-  /// Show error message
-  void showError(String message) {
+  /// Show achievement notification
+  void showAchievementNotification({Achievement? achievement}) {
     emit(state.copyWith(
-      hasError: true,
-      errorMessage: message,
+      showAchievementNotification: true,
+      currentAchievement: achievement,
     ));
     
-    // Auto-hide error after 5 seconds
-    _autoHideTimer?.cancel();
-    _autoHideTimer = Timer(const Duration(seconds: 5), hideError);
+    // Auto-hide after delay
+    _notificationTimer?.cancel();
+    _notificationTimer = Timer(const Duration(seconds: 5), () {
+      hideAchievementNotification();
+    });
   }
 
-  /// Hide error message
-  void hideError() {
-    _autoHideTimer?.cancel();
+  /// Hide achievement notification
+  void hideAchievementNotification() {
     emit(state.copyWith(
-      hasError: false,
-      errorMessage: null,
+      showAchievementNotification: false,
+      currentAchievement: null,
     ));
+    _notificationTimer?.cancel();
   }
 
   // ========================================
   // NOTIFICATION MANAGEMENT
   // ========================================
 
-  /// Show achievement notification
-  void showAchievementNotification() {
+  /// Show error message
+  void showError(String message, {ErrorType? errorType}) {
     emit(state.copyWith(
-      showAchievementNotification: true,
+      hasError: true,
+      errorMessage: message,
+      errorType: errorType ?? ErrorType.general,
     ));
     
-    // Auto-hide after 3 seconds
-    _notificationTimer?.cancel();
-    _notificationTimer = Timer(const Duration(seconds: 3), hideAchievementNotification);
+    // Auto-hide error after delay
+    _autoHideTimer?.cancel();
+    _autoHideTimer = Timer(const Duration(seconds: 5), () {
+      hideError();
+    });
+    
+    // Play error sound
+    if (state.soundEnabled) {
+      _audioService.playSfx('ui_error');
+    }
   }
 
-  /// Hide achievement notification
-  void hideAchievementNotification() {
-    _notificationTimer?.cancel();
+  /// Hide error message
+  void hideError() {
     emit(state.copyWith(
-      showAchievementNotification: false,
+      hasError: false,
+      errorMessage: null,
+      errorType: null,
     ));
+    _autoHideTimer?.cancel();
+  }
+
+  /// Show success message
+  void showSuccess(String message) {
+    emit(state.copyWith(
+      hasSuccess: true,
+      successMessage: message,
+    ));
+    
+    // Auto-hide success after delay
+    _autoHideTimer?.cancel();
+    _autoHideTimer = Timer(const Duration(seconds: 3), () {
+      hideSuccess();
+    });
+    
+    // Play success sound
+    if (state.soundEnabled) {
+      _audioService.playSfx('ui_success');
+    }
+  }
+
+  /// Hide success message
+  void hideSuccess() {
+    emit(state.copyWith(
+      hasSuccess: false,
+      successMessage: null,
+    ));
+    _autoHideTimer?.cancel();
+  }
+
+  /// Show info message
+  void showInfo(String message) {
+    emit(state.copyWith(
+      hasInfo: true,
+      infoMessage: message,
+    ));
+    
+    // Auto-hide info after delay
+    _autoHideTimer?.cancel();
+    _autoHideTimer = Timer(const Duration(seconds: 4), () {
+      hideInfo();
+    });
+  }
+
+  /// Hide info message
+  void hideInfo() {
+    emit(state.copyWith(
+      hasInfo: false,
+      infoMessage: null,
+    ));
+    _autoHideTimer?.cancel();
   }
 
   // ========================================
@@ -263,24 +321,20 @@ class UICubit extends Cubit<UIState> {
   }
 
   /// Set sound effects volume
-  Future<void> setSoundVolume(double volume) async {
+  Future<void> setSfxVolume(double volume) async {
     try {
       final clampedVolume = volume.clamp(0.0, 1.0);
-      emit(state.copyWith(soundVolume: clampedVolume));
+      emit(state.copyWith(sfxVolume: clampedVolume));
       
       await _audioService.setSfxVolume(clampedVolume);
       await _saveUserPreferences();
       
-      developer.log('Sound volume set: $clampedVolume', name: 'UICubit');
+      developer.log('SFX volume set: $clampedVolume', name: 'UICubit');
     } catch (e) {
-      developer.log('Failed to set sound volume: $e', name: 'UICubit');
+      developer.log('Failed to set SFX volume: $e', name: 'UICubit');
       showError('Failed to adjust sound volume');
     }
   }
-
-  // ========================================
-  // OTHER SETTINGS
-  // ========================================
 
   /// Toggle haptic feedback
   Future<void> toggleHaptics() async {
@@ -288,18 +342,17 @@ class UICubit extends Cubit<UIState> {
       final newValue = !state.hapticsEnabled;
       emit(state.copyWith(hapticsEnabled: newValue));
       
-      // Provide haptic feedback if enabling
-      if (newValue) {
-        await _audioService.vibrate();
-      }
-      
       await _saveUserPreferences();
       developer.log('Haptics toggled: $newValue', name: 'UICubit');
     } catch (e) {
       developer.log('Failed to toggle haptics: $e', name: 'UICubit');
-      showError('Failed to toggle haptics');
+      showError('Failed to toggle haptic feedback');
     }
   }
+
+  // ========================================
+  // GAME SETTINGS
+  // ========================================
 
   /// Toggle auto-save
   Future<void> toggleAutoSave() async {
@@ -339,7 +392,7 @@ class UICubit extends Cubit<UIState> {
       developer.log('Particles toggled: $newValue', name: 'UICubit');
     } catch (e) {
       developer.log('Failed to toggle particles: $e', name: 'UICubit');
-      showError('Failed to toggle particles');
+      showError('Failed to toggle particle effects');
     }
   }
 
@@ -369,12 +422,16 @@ class UICubit extends Cubit<UIState> {
     }
   }
 
+  // ========================================
+  // ACHIEVEMENT DISPLAY
+  // ========================================
+
   /// Show achievement unlock
   void showAchievementUnlock(Achievement achievement) {
     try {
-      showLoading();
-      
       emit(state.copyWith(
+        showAchievementNotification: true,
+        currentAchievement: achievement,
         pageData: {
           'achievement_unlock': {
             'achievement_id': achievement.id,
@@ -386,10 +443,16 @@ class UICubit extends Cubit<UIState> {
       ));
       
       // Auto-hide after delay
-      Future.delayed(const Duration(seconds: 3), () {
-        hideLoading();
+      _notificationTimer?.cancel();
+      _notificationTimer = Timer(const Duration(seconds: 5), () {
+        hideAchievementNotification();
         emit(state.copyWith(pageData: {}));
       });
+      
+      // Play achievement sound
+      if (state.soundEnabled) {
+        _audioService.playAchievementSound();
+      }
       
       developer.log('Achievement unlock shown: ${achievement.title}', name: 'UICubit');
     } catch (e) {
@@ -458,25 +521,27 @@ class UICubit extends Cubit<UIState> {
           musicEnabled: preferences['musicEnabled'] as bool? ?? true,
           soundEnabled: preferences['soundEnabled'] as bool? ?? true,
           hapticsEnabled: preferences['hapticsEnabled'] as bool? ?? true,
-          musicVolume: (preferences['musicVolume'] as double?) ?? 0.7,
-          soundVolume: (preferences['soundVolume'] as double?) ?? 0.8,
+          musicVolume: (preferences['musicVolume'] as double?)?.clamp(0.0, 1.0) ?? 0.7,
+          sfxVolume: (preferences['sfxVolume'] as double?)?.clamp(0.0, 1.0) ?? 0.8,
           currentTheme: AppTheme.values.firstWhere(
-            (theme) => theme.name == (preferences['theme'] as String?),
+            (theme) => theme.name == preferences['theme'],
             orElse: () => AppTheme.dark,
           ),
-          currentLanguage: AppLanguage.values.firstWhere(
-            (lang) => lang.name == (preferences['language'] as String?),
-            orElse: () => AppLanguage.english,
-          ),
+          autoSaveEnabled: preferences['autoSaveEnabled'] as bool? ?? true,
           animationsEnabled: preferences['animationsEnabled'] as bool? ?? true,
           particlesEnabled: preferences['particlesEnabled'] as bool? ?? true,
-          autoSaveEnabled: preferences['autoSaveEnabled'] as bool? ?? true,
+          shadowsEnabled: preferences['shadowsEnabled'] as bool? ?? false,
+          performanceMode: PerformanceMode.values.firstWhere(
+            (mode) => mode.name == preferences['performanceMode'],
+            orElse: () => PerformanceMode.balanced,
+          ),
         ));
+        
+        developer.log('User preferences loaded', name: 'UICubit');
       }
-      
-      developer.log('User preferences loaded', name: 'UICubit');
     } catch (e) {
       developer.log('Failed to load user preferences: $e', name: 'UICubit');
+      // Continue with default preferences
     }
   }
 
@@ -488,12 +553,14 @@ class UICubit extends Cubit<UIState> {
         'soundEnabled': state.soundEnabled,
         'hapticsEnabled': state.hapticsEnabled,
         'musicVolume': state.musicVolume,
-        'soundVolume': state.soundVolume,
+        'sfxVolume': state.sfxVolume,
         'theme': state.currentTheme.name,
-        'language': state.currentLanguage.name,
+        'autoSaveEnabled': state.autoSaveEnabled,
         'animationsEnabled': state.animationsEnabled,
         'particlesEnabled': state.particlesEnabled,
-        'autoSaveEnabled': state.autoSaveEnabled,
+        'shadowsEnabled': state.shadowsEnabled,
+        'performanceMode': state.performanceMode.name,
+        'lastUpdated': DateTime.now().toIso8601String(),
       };
       
       await _storageService.saveUserPreferences(preferences);
@@ -501,5 +568,37 @@ class UICubit extends Cubit<UIState> {
     } catch (e) {
       developer.log('Failed to save user preferences: $e', name: 'UICubit');
     }
+  }
+
+  // ========================================
+  // UTILITY METHODS
+  // ========================================
+
+  /// Reset all settings to defaults
+  Future<void> resetToDefaults() async {
+    try {
+      emit(const UIState()); // Reset to default state
+      await _saveUserPreferences();
+      showSuccess('Settings reset to defaults');
+      developer.log('Settings reset to defaults', name: 'UICubit');
+    } catch (e) {
+      developer.log('Failed to reset settings: $e', name: 'UICubit');
+      showError('Failed to reset settings');
+    }
+  }
+
+  /// Get current UI status
+  Map<String, dynamic> getUIStatus() {
+    return {
+      'currentPage': state.currentPage.name,
+      'musicEnabled': state.musicEnabled,
+      'soundEnabled': state.soundEnabled,
+      'theme': state.currentTheme.name,
+      'performanceMode': state.performanceMode.name,
+      'hasActiveOverlay': state.overlayType != null,
+      'overlayType': state.overlayType?.name,
+      'isLoading': state.isLoading,
+      'hasNotifications': state.hasError || state.hasSuccess || state.hasInfo,
+    };
   }
 }

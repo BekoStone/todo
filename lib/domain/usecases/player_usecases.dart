@@ -1,17 +1,24 @@
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:puzzle_box/domain/entities/achievement_entity.dart';
-import 'package:puzzle_box/domain/entities/block_entity.dart';
 import 'package:puzzle_box/domain/entities/game_session_entity.dart';
 import 'package:puzzle_box/domain/entities/player_stats_entity.dart';
 import 'package:puzzle_box/domain/entities/power_up_entity.dart';
 import '../repositories/player_repository.dart';
 
+/// Player-related business logic operations.
+/// Manages player stats, achievements, inventory, and progression.
+/// Follows Clean Architecture by containing all player-specific use cases.
 class PlayerUseCases {
   final PlayerRepository _repository;
   
   PlayerUseCases(this._repository);
+
+  // ========================================
+  // PLAYER STATS MANAGEMENT
+  // ========================================
   
-  // Player stats management
+  /// Load player statistics
   Future<PlayerStats?> loadPlayerStats() async {
     try {
       return await _repository.loadPlayerStats();
@@ -21,6 +28,7 @@ class PlayerUseCases {
     }
   }
   
+  /// Save player statistics
   Future<bool> savePlayerStats(PlayerStats playerStats) async {
     try {
       return await _repository.savePlayerStats(playerStats);
@@ -30,11 +38,52 @@ class PlayerUseCases {
     }
   }
   
+  /// Create a new player
   Future<PlayerStats> createNewPlayer(String playerId) async {
-    return await _repository.createNewPlayer(playerId);
+    try {
+      return await _repository.createNewPlayer(playerId);
+    } catch (e) {
+      debugPrint('Failed to create new player: $e');
+      // Return default player stats
+      return PlayerStats.newPlayer(playerId);
+    }
   }
+
+  /// Get current player statistics with caching
+  Future<PlayerStats?> getCurrentPlayerStats() async {
+    try {
+      return await _repository.getPlayerStats();
+    } catch (e) {
+      debugPrint('Failed to get current player stats: $e');
+      return null;
+    }
+  }
+
+  /// Update player display name
+  Future<bool> updatePlayerName(String playerId, String newName) async {
+    try {
+      return await _repository.updatePlayerName(playerId, newName);
+    } catch (e) {
+      debugPrint('Failed to update player name: $e');
+      return false;
+    }
+  }
+
+  /// Update player avatar
+  Future<bool> updatePlayerAvatar(String playerId, String avatarUrl) async {
+    try {
+      return await _repository.updatePlayerAvatar(playerId, avatarUrl);
+    } catch (e) {
+      debugPrint('Failed to update player avatar: $e');
+      return false;
+    }
+  }
+
+  // ========================================
+  // GAME SESSION COMPLETION
+  // ========================================
   
-  // Game session completion
+  /// Update player stats after completing a game session
   Future<PlayerStats?> updateStatsAfterGame({
     required GameSession gameSession,
     required PlayerStats currentStats,
@@ -43,13 +92,15 @@ class PlayerUseCases {
     bool usedUndo = false,
   }) async {
     try {
-      final sessionTime = gameSession.currentSessionTime;
+      final sessionTime = gameSession.actualPlayTime;
+      final blocksPlaced = _calculateBlocksPlaced(gameSession);
+      
       final updatedStats = currentStats.afterGameSession(
-        gameScore: gameSession.score,
-        blocksPlaced: _calculateBlocksPlaced(gameSession),
+        gameScore: gameSession.currentScore,
+        blocksPlaced: blocksPlaced,
         linesCleared: gameSession.linesCleared,
-        maxCombo: gameSession.comboCount,
-        maxStreak: gameSession.streakCount,
+        maxCombo: gameSession.maxCombo,
+        maxStreak: gameSession.statistics.maxStreak,
         sessionTime: sessionTime,
         coinsEarned: coinsEarned,
         hadPerfectClear: hadPerfectClear,
@@ -62,324 +113,514 @@ class PlayerUseCases {
       return null;
     }
   }
-  
-  // Achievement management
-  Future<List<Achievement>> loadAchievements() async {
-    return await _repository.loadAchievements();
-  }
-  
-  Future<List<Achievement>> checkAndUpdateAchievements({
+
+  /// Process game completion and update all related stats
+  Future<Map<String, dynamic>> processGameCompletion({
     required GameSession gameSession,
-    required PlayerStats playerStats,
-    required List<Achievement> currentAchievements,
+    required PlayerStats currentStats,
     bool hadPerfectClear = false,
     bool usedUndo = false,
+    List<String> powerUpsUsed = const [],
   }) async {
     try {
-      final gameData = _buildGameDataForAchievements(
+      // Calculate coins earned
+      final coinsEarned = _calculateCoinsEarned(
         gameSession,
-        playerStats,
         hadPerfectClear: hadPerfectClear,
         usedUndo: usedUndo,
       );
-      
-      final updatedAchievements = <Achievement>[];
-      bool hasNewUnlocks = false;
-      
-      for (final achievement in currentAchievements) {
-        if (achievement.isUnlocked) {
-          updatedAchievements.add(achievement);
-          continue;
-        }
-        
-        // Calculate new progress
-        final newProgress = AchievementChecker.calculateProgress(achievement, gameData);
-        final updatedAchievement = achievement.updateProgress(newProgress);
-        
-        // Check if achievement should be unlocked
-        if (!achievement.isUnlocked && 
-            AchievementChecker.checkCondition(updatedAchievement, gameData)) {
-          final unlockedAchievement = updatedAchievement.unlock();
-          updatedAchievements.add(unlockedAchievement);
-          hasNewUnlocks = true;
-          
-          // Grant achievement rewards
-          await _grantAchievementRewards(unlockedAchievement);
-          
-          debugPrint('🏆 Achievement unlocked: ${unlockedAchievement.name}');
-        } else {
-          updatedAchievements.add(updatedAchievement);
-        }
+
+      // Update player stats
+      final updatedStats = await updateStatsAfterGame(
+        gameSession: gameSession,
+        currentStats: currentStats,
+        coinsEarned: coinsEarned,
+        hadPerfectClear: hadPerfectClear,
+        usedUndo: usedUndo,
+      );
+
+      if (updatedStats == null) {
+        throw Exception('Failed to update player stats');
       }
-      
-      if (hasNewUnlocks) {
-        await _repository.saveAchievements(updatedAchievements);
-      }
-      
-      return updatedAchievements;
+
+      // Check for new achievements
+      final achievementProgress = await _checkAchievementProgress(updatedStats, gameSession);
+
+      // Update play streak
+      final streakUpdated = await updatePlayStreak();
+
+      return {
+        'updatedStats': updatedStats,
+        'coinsEarned': coinsEarned,
+        'newAchievements': achievementProgress['newAchievements'] ?? [],
+        'achievementProgress': achievementProgress['progress'] ?? [],
+        'isNewBestScore': gameSession.currentScore > currentStats.highScore,
+        'playStreakUpdated': streakUpdated,
+        'levelUp': updatedStats.currentLevel > currentStats.currentLevel,
+      };
     } catch (e) {
-      debugPrint('Failed to check achievements: $e');
-      return currentAchievements;
+      debugPrint('Failed to process game completion: $e');
+      return {
+        'error': e.toString(),
+        'coinsEarned': 0,
+        'newAchievements': <Achievement>[],
+        'achievementProgress': <Map<String, dynamic>>[],
+        'isNewBestScore': false,
+        'playStreakUpdated': false,
+        'levelUp': false,
+      };
     }
   }
-  
-  Future<bool> unlockAchievement(String achievementId) async {
-    return await _repository.unlockAchievement(achievementId);
-  }
-  
-  // Power-up management
-  Future<Map<PowerUpType, int>> loadPowerUpInventory() async {
-    return await _repository.loadPowerUpInventory();
-  }
-  
-  Future<bool> usePowerUp(PowerUpType type) async {
-    return await _repository.usePowerUp(type);
-  }
-  
-  Future<bool> addPowerUp(PowerUpType type, int quantity) async {
-    return await _repository.addPowerUp(type, quantity);
-  }
-  
-  Future<bool> canUsePowerUp(PowerUpType type, GameSession gameSession) async {
-    final inventory = await loadPowerUpInventory();
-    final quantity = inventory[type] ?? 0;
-    
-    if (quantity <= 0) return false;
-    
-    // Check power-up specific conditions
-    final powerUp = PowerUp.definitions[type];
-    if (powerUp == null) return false;
-    
-    final gameState = _buildGameStateForPowerUp(gameSession);
-    return powerUp.canBeUsed(gameState);
-  }
-  
-  // Coin management
+
+  // ========================================
+  // COIN MANAGEMENT
+  // ========================================
+
+  /// Get current coin balance
   Future<int> getCoins() async {
-    return await _repository.getCoins();
+    try {
+      return await _repository.getCoins();
+    } catch (e) {
+      debugPrint('Failed to get coins: $e');
+      return 0;
+    }
   }
-  
-  Future<bool> spendCoins(int amount) async {
-    final currentCoins = await getCoins();
-    if (currentCoins < amount) return false;
-    
-    return await _repository.spendCoins(amount);
-  }
-  
+
+  /// Add coins to player balance
   Future<bool> addCoins(int amount) async {
-    return await _repository.addCoins(amount);
-  }
-  
-  Future<bool> purchasePowerUp(PowerUpType type) async {
-    final powerUp = PowerUp.definitions[type];
-    if (powerUp == null) return false;
-    
-    final canAfford = await spendCoins(powerUp.cost);
-    if (!canAfford) return false;
-    
-    return await addPowerUp(type, 1);
-  }
-  
-  int calculateCoinsEarned(GameSession gameSession, PlayerStats playerStats) {
-    int coins = 0;
-    
-    // Base coins for playing
-    coins += 5;
-    
-    // Score-based coins
-    coins += (gameSession.score / 100).floor();
-    
-    // Line clear bonus
-    coins += gameSession.linesCleared * 2;
-    
-    // Combo bonus
-    if (gameSession.comboCount > 2) {
-      coins += gameSession.comboCount * 5;
+    try {
+      return await _repository.addCoins(amount);
+    } catch (e) {
+      debugPrint('Failed to add coins: $e');
+      return false;
     }
-    
-    // Perfect clear bonus
-    if (gameSession.gridFillPercentage == 0) {
-      coins += 50;
-    }
-    
-    // New high score bonus
-    if (gameSession.score > playerStats.bestScore) {
-      coins += 25;
-    }
-    
-    return coins;
   }
-  
-  // Settings management
+
+  /// Spend coins from player balance
+  Future<bool> spendCoins(int amount) async {
+    try {
+      final hasEnough = await _repository.hasEnoughCoins(amount);
+      if (!hasEnough) {
+        debugPrint('Insufficient coins to spend $amount');
+        return false;
+      }
+      return await _repository.spendCoins(amount);
+    } catch (e) {
+      debugPrint('Failed to spend coins: $e');
+      return false;
+    }
+  }
+
+  /// Check if player has enough coins
+  Future<bool> hasEnoughCoins(int amount) async {
+    try {
+      return await _repository.hasEnoughCoins(amount);
+    } catch (e) {
+      debugPrint('Failed to check coin balance: $e');
+      return false;
+    }
+  }
+
+  /// Claim daily bonus coins
+  Future<Map<String, dynamic>> claimDailyBonus() async {
+    try {
+      final canClaim = await _repository.canClaimDailyBonus();
+      if (!canClaim) {
+        return {
+          'success': false,
+          'reason': 'Daily bonus already claimed',
+          'coinsEarned': 0,
+        };
+      }
+
+      final bonusAmount = _calculateDailyBonus();
+      final claimed = await _repository.claimDailyBonus();
+      
+      if (claimed) {
+        await addCoins(bonusAmount);
+        return {
+          'success': true,
+          'coinsEarned': bonusAmount,
+          'message': 'Daily bonus claimed!',
+        };
+      }
+
+      return {
+        'success': false,
+        'reason': 'Failed to claim bonus',
+        'coinsEarned': 0,
+      };
+    } catch (e) {
+      debugPrint('Failed to claim daily bonus: $e');
+      return {
+        'success': false,
+        'reason': 'Error claiming bonus',
+        'coinsEarned': 0,
+      };
+    }
+  }
+
+  // ========================================
+  // POWER-UP MANAGEMENT
+  // ========================================
+
+  /// Get power-up inventory
+  Future<Map<PowerUpType, int>> getPowerUpInventory() async {
+    try {
+      return await _repository.loadPowerUpInventory();
+    } catch (e) {
+      debugPrint('Failed to get power-up inventory: $e');
+      return {};
+    }
+  }
+
+  /// Use a power-up
+  Future<bool> usePowerUp(PowerUpType type) async {
+    try {
+      final hasEnough = await _repository.hasPowerUp(type);
+      if (!hasEnough) {
+        debugPrint('No $type power-up available');
+        return false;
+      }
+      return await _repository.usePowerUp(type);
+    } catch (e) {
+      debugPrint('Failed to use power-up: $e');
+      return false;
+    }
+  }
+
+  /// Add power-up to inventory
+  Future<bool> addPowerUp(PowerUpType type, int quantity) async {
+    try {
+      return await _repository.addPowerUp(type, quantity);
+    } catch (e) {
+      debugPrint('Failed to add power-up: $e');
+      return false;
+    }
+  }
+
+  /// Purchase power-up with coins
+  Future<Map<String, dynamic>> purchasePowerUp(PowerUpType type, int quantity) async {
+    try {
+      final cost = _calculatePowerUpCost(type, quantity);
+      final hasEnoughCoins = await hasEnoughCoins(cost);
+      
+      if (!hasEnoughCoins) {
+        return {
+          'success': false,
+          'reason': 'Insufficient coins',
+          'cost': cost,
+        };
+      }
+
+      final coinsSpent = await spendCoins(cost);
+      if (!coinsSpent) {
+        return {
+          'success': false,
+          'reason': 'Failed to spend coins',
+          'cost': cost,
+        };
+      }
+
+      final powerUpAdded = await addPowerUp(type, quantity);
+      if (!powerUpAdded) {
+        // Refund coins if power-up addition failed
+        await addCoins(cost);
+        return {
+          'success': false,
+          'reason': 'Failed to add power-up',
+          'cost': cost,
+        };
+      }
+
+      return {
+        'success': true,
+        'powerUpType': type,
+        'quantity': quantity,
+        'cost': cost,
+      };
+    } catch (e) {
+      debugPrint('Failed to purchase power-up: $e');
+      return {
+        'success': false,
+        'reason': 'Purchase error',
+        'cost': 0,
+      };
+    }
+  }
+
+  // ========================================
+  // ACHIEVEMENT MANAGEMENT
+  // ========================================
+
+  /// Get all achievements
+  Future<List<Achievement>> getAchievements() async {
+    try {
+      return await _repository.getAchievements();
+    } catch (e) {
+      debugPrint('Failed to get achievements: $e');
+      return [];
+    }
+  }
+
+  /// Get unlocked achievements
+  Future<List<Achievement>> getUnlockedAchievements() async {
+    try {
+      return await _repository.getUnlockedAchievements();
+    } catch (e) {
+      debugPrint('Failed to get unlocked achievements: $e');
+      return [];
+    }
+  }
+
+  /// Get achievements by category
+  Future<List<Achievement>> getAchievementsByCategory(AchievementCategory category) async {
+    try {
+      final allAchievements = await getAchievements();
+      return allAchievements.where((a) => a.category == category).toList();
+    } catch (e) {
+      debugPrint('Failed to get achievements by category: $e');
+      return [];
+    }
+  }
+
+  /// Check achievement progress
+  Future<double> getAchievementProgress(String achievementId) async {
+    try {
+      return await _repository.getAchievementProgress(achievementId);
+    } catch (e) {
+      debugPrint('Failed to get achievement progress: $e');
+      return 0.0;
+    }
+  }
+
+  // ========================================
+  // STATISTICS & ANALYTICS
+  // ========================================
+
+  /// Get recent game scores
+  Future<List<int>> getRecentScores({int limit = 10}) async {
+    try {
+      return await _repository.getRecentScores(limit: limit);
+    } catch (e) {
+      debugPrint('Failed to get recent scores: $e');
+      return [];
+    }
+  }
+
+  /// Add score to history
+  Future<bool> addScore(int score) async {
+    try {
+      return await _repository.addScore(score);
+    } catch (e) {
+      debugPrint('Failed to add score: $e');
+      return false;
+    }
+  }
+
+  /// Get play streak
+  Future<int> getPlayStreak() async {
+    try {
+      return await _repository.getPlayStreak();
+    } catch (e) {
+      debugPrint('Failed to get play streak: $e');
+      return 0;
+    }
+  }
+
+  /// Update play streak
+  Future<bool> updatePlayStreak() async {
+    try {
+      return await _repository.updatePlayStreak();
+    } catch (e) {
+      debugPrint('Failed to update play streak: $e');
+      return false;
+    }
+  }
+
+  /// Get comprehensive player analytics
+  Future<Map<String, dynamic>> getPlayerAnalytics() async {
+    try {
+      final stats = await getCurrentPlayerStats();
+      if (stats == null) return {};
+
+      final recentScores = await getRecentScores(limit: 10);
+      final playStreak = await getPlayStreak();
+      final achievements = await getUnlockedAchievements();
+      final powerUps = await getPowerUpInventory();
+
+      return {
+        'totalScore': stats.totalScore,
+        'bestScore': stats.bestScore,
+        'averageScore': recentScores.isNotEmpty 
+          ? recentScores.reduce((a, b) => a + b) / recentScores.length 
+          : 0.0,
+        'gamesPlayed': stats.totalGamesPlayed,
+        'totalPlayTime': stats.totalPlayTime.inMinutes,
+        'linesCleared': stats.totalLinesCleared,
+        'blocksPlaced': stats.totalBlocksPlaced,
+        'currentCoins': stats.currentCoins,
+        'totalCoinsEarned': stats.totalCoinsEarned,
+        'playStreak': playStreak,
+        'achievementsUnlocked': achievements.length,
+        'powerUpsOwned': powerUps.values.fold<int>(0, (sum, count) => sum + count),
+        'perfectClears': stats.perfectClears,
+        'bestCombo': stats.bestCombo,
+        'bestStreak': stats.bestStreak,
+        'currentLevel': stats.currentLevel,
+      };
+    } catch (e) {
+      debugPrint('Failed to get player analytics: $e');
+      return {};
+    }
+  }
+
+  // ========================================
+  // SETTINGS MANAGEMENT
+  // ========================================
+
+  /// Get player settings
   Future<Map<String, dynamic>> getPlayerSettings() async {
-    return await _repository.getPlayerSettings();
+    try {
+      return await _repository.getPlayerSettings();
+    } catch (e) {
+      debugPrint('Failed to get player settings: $e');
+      return {};
+    }
   }
-  
-  Future<bool> savePlayerSettings(Map<String, dynamic> settings) async {
-    return await _repository.savePlayerSettings(settings);
+
+  /// Update player setting
+  Future<bool> updatePlayerSetting(String key, dynamic value) async {
+    try {
+      return await _repository.updateSetting(key, value);
+    } catch (e) {
+      debugPrint('Failed to update player setting: $e');
+      return false;
+    }
   }
-  
-  Future<bool> updateSetting(String key, dynamic value) async {
-    return await _repository.updateSetting(key, value);
+
+  /// Get specific setting value
+  Future<T?> getPlayerSetting<T>(String key, {T? defaultValue}) async {
+    try {
+      return await _repository.getSetting<T>(key, defaultValue: defaultValue);
+    } catch (e) {
+      debugPrint('Failed to get player setting: $e');
+      return defaultValue;
+    }
   }
-  
-  // Statistics and analytics
-  Map<String, dynamic> calculateGameStats(GameSession gameSession, PlayerStats playerStats) {
-    return {
-      'sessionTime': gameSession.currentSessionTime.inSeconds,
-      'efficiency': gameSession.efficiency,
-      'gridFillPercentage': gameSession.gridFillPercentage,
-      'performanceRating': gameSession.performanceRating,
-      'isNewHighScore': gameSession.score > playerStats.bestScore,
-      'isLongSession': gameSession.isLongSession,
-      'isPerfectGame': gameSession.isPerfectGame,
-      'levelProgress': gameSession.levelProgress,
-      'pointsPerMinute': gameSession.pointsPerMinute,
-    };
+
+  // ========================================
+  // HELPER METHODS
+  // ========================================
+
+  /// Calculate blocks placed from game session
+  int _calculateBlocksPlaced(GameSession gameSession) {
+    return gameSession.statistics.blocksPlaced;
   }
-  
-  List<Achievement> getUnlockedAchievements(List<Achievement> achievements) {
-    return achievements.where((a) => a.isUnlocked).toList();
-  }
-  
-  List<Achievement> getRecentlyUnlockedAchievements(List<Achievement> achievements) {
-    return achievements.where((a) => a.isRecentlyUnlocked).toList();
-  }
-  
-  double calculateOverallProgress(PlayerStats playerStats, List<Achievement> achievements) {
-    final totalAchievements = achievements.length;
-    final unlockedAchievements = achievements.where((a) => a.isUnlocked).length;
-    
-    if (totalAchievements == 0) return 0.0;
-    
-    final achievementProgress = unlockedAchievements / totalAchievements;
-    final levelProgress = playerStats.experienceProgress;
-    
-    // Weight achievements more heavily
-    return (achievementProgress * 0.7) + (levelProgress * 0.3);
-  }
-  
-  // Private helper methods
-  Map<String, dynamic> _buildGameDataForAchievements(
-    GameSession gameSession,
-    PlayerStats playerStats, {
+
+  /// Calculate coins earned from game session
+  int _calculateCoinsEarned(
+    GameSession gameSession, {
     bool hadPerfectClear = false,
     bool usedUndo = false,
   }) {
-    return {
-      // Current game data
-      'currentScore': gameSession.score,
-      'level': gameSession.level,
-      'linesCleared': gameSession.linesCleared,
-      'maxCombo': gameSession.comboCount,
-      'maxStreak': gameSession.streakCount,
-      'sessionTime': gameSession.currentSessionTime.inSeconds,
-      'hadPerfectClear': hadPerfectClear,
-      'usedUndo': usedUndo,
-      'blocksPlaced': _calculateBlocksPlaced(gameSession),
-      
-      // Player stats
-      'gamesPlayed': playerStats.totalGamesPlayed + 1,
-      'totalBlocksPlaced': playerStats.totalBlocksPlaced,
-      'totalLinesCleared': playerStats.totalLinesCleared,
-      'bestScore': playerStats.bestScore > gameSession.score 
-          ? playerStats.bestScore 
-          : gameSession.score,
-      'bestCombo': playerStats.bestCombo > gameSession.comboCount 
-          ? playerStats.bestCombo 
-          : gameSession.comboCount,
-      'bestLevel': playerStats.experienceLevel > gameSession.level 
-          ? playerStats.experienceLevel 
-          : gameSession.level,
-      'longestSession': playerStats.totalTimePlayed.inSeconds > gameSession.currentSessionTime.inSeconds
-          ? playerStats.totalTimePlayed.inSeconds
-          : gameSession.currentSessionTime.inSeconds,
-      'perfectClears': playerStats.perfectClears + (hadPerfectClear ? 1 : 0),
-      
-      // Special conditions
-      'secretPatternFound': _checkForSecretPattern(gameSession),
+    int baseCoins = (gameSession.currentScore / 100).floor();
+    
+    // Bonus for perfect clear
+    if (hadPerfectClear) {
+      baseCoins += 50;
+    }
+    
+    // Penalty for using undo
+    if (usedUndo) {
+      baseCoins = (baseCoins * 0.8).floor();
+    }
+    
+    // Level multiplier
+    baseCoins *= gameSession.currentLevel;
+    
+    return math.max(1, baseCoins);
+  }
+
+  /// Calculate daily bonus amount
+  int _calculateDailyBonus() {
+    // Base daily bonus, could be enhanced with streak multipliers
+    return 50;
+  }
+
+  /// Calculate power-up cost
+  int _calculatePowerUpCost(PowerUpType type, int quantity) {
+    const baseCosts = {
+      PowerUpType.hammer: 100,
+      PowerUpType.bomb: 200,
+      PowerUpType.lineClear: 150,
+      PowerUpType.shuffle: 75,
+      PowerUpType.hint: 50,
     };
+    
+    final baseCost = baseCosts[type] ?? 100;
+    return baseCost * quantity;
   }
-  
-  Map<String, dynamic> _buildGameStateForPowerUp(GameSession gameSession) {
-    return {
-      'hasActiveBlocks': gameSession.activeBlocks.isNotEmpty,
-      'hasPlacedBlocks': gameSession.gridFillPercentage > 0,
-      'hasValidMoves': _hasValidMoves(gameSession),
-      'canUndo': false, // Would need undo manager state
-      'isTimerRunning': !gameSession.isGameOver,
-    };
-  }
-  
-  int _calculateBlocksPlaced(GameSession gameSession) {
-    // This would need to be tracked during the game
-    // For now, estimate based on grid fill
-    return (gameSession.gridFillPercentage / 100 * 64).round();
-  }
-  
-  bool _hasValidMoves(GameSession gameSession) {
-    for (final block in gameSession.activeBlocks) {
-      for (int row = 0; row < 8; row++) {
-        for (int col = 0; col < 8; col++) {
-          if (_canPlaceBlockAt(gameSession, block, row, col)) {
-            return true;
+
+  /// Check for achievement progress updates
+  Future<Map<String, dynamic>> _checkAchievementProgress(
+    PlayerStats updatedStats,
+    GameSession gameSession,
+  ) async {
+    try {
+      final achievements = await getAchievements();
+      final newlyUnlocked = <Achievement>[];
+      final progressUpdates = <Map<String, dynamic>>[];
+
+      for (final achievement in achievements) {
+        if (achievement.isUnlocked) continue;
+
+        final previousProgress = achievement.currentProgress;
+        var newProgress = previousProgress;
+
+        // Check achievement conditions based on type
+        switch (achievement.id) {
+          case 'first_game':
+            newProgress = updatedStats.totalGamesPlayed >= 1 ? 1 : 0;
+            break;
+          case 'score_1000':
+            newProgress = gameSession.currentScore >= 1000 ? 1 : 0;
+            break;
+          case 'games_10':
+            newProgress = updatedStats.totalGamesPlayed;
+            break;
+          case 'lines_100':
+            newProgress = updatedStats.totalLinesCleared;
+            break;
+          // Add more achievement checks here
+        }
+
+        if (newProgress != previousProgress) {
+          progressUpdates.add({
+            'achievementId': achievement.id,
+            'previousProgress': previousProgress,
+            'newProgress': newProgress,
+            'targetValue': achievement.targetValue,
+          });
+
+          if (newProgress >= achievement.targetValue && !achievement.isUnlocked) {
+            final unlockedAchievement = achievement.unlock();
+            newlyUnlocked.add(unlockedAchievement);
+            await _repository.updateAchievement(unlockedAchievement);
           }
         }
       }
-    }
-    return false;
-  }
-  
-  bool _canPlaceBlockAt(GameSession gameSession, Block block, int row, int col) {
-    final occupiedCells = block.occupiedCells;
-    
-    for (final cell in occupiedCells) {
-      final gridR = row + cell.y.toInt();
-      final gridC = col + cell.x.toInt();
-      
-      if (gridR < 0 || gridR >= 8 || gridC < 0 || gridC >= 8) {
-        return false;
-      }
-      
-      if (gameSession.grid[gridR][gridC]) {
-        return false;
-      }
-    }
-    
-    return true;
-  }
-  
-  bool _checkForSecretPattern(GameSession gameSession) {
-    // Check for specific patterns in the grid
-    // This could be any special arrangement
-    return gameSession.score == 777 || // Lucky number
-           gameSession.comboCount >= 10 || // High combo
-           gameSession.gridFillPercentage == 0; // Perfect clear
-  }
-  
-  Future<void> _grantAchievementRewards(Achievement achievement) async {
-    // Grant coin rewards
-    if (achievement.coinReward > 0) {
-      await addCoins(achievement.coinReward);
-    }
-    
-    // Grant power-up rewards
-    for (final entry in achievement.powerUpRewards.entries) {
-      final powerUpTypeString = entry.key;
-      final quantity = entry.value;
-      
-      // Convert string to PowerUpType
-      PowerUpType? powerUpType;
-      for (final type in PowerUpType.values) {
-        if (type.name == powerUpTypeString) {
-          powerUpType = type;
-          break;
-        }
-      }
-      
-      if (powerUpType != null) {
-        await addPowerUp(powerUpType, quantity);
-      }
+
+      return {
+        'newAchievements': newlyUnlocked,
+        'progress': progressUpdates,
+      };
+    } catch (e) {
+      debugPrint('Failed to check achievement progress: $e');
+      return {
+        'newAchievements': <Achievement>[],
+        'progress': <Map<String, dynamic>>[],
+      };
     }
   }
 }

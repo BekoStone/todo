@@ -76,6 +76,8 @@ class AudioService {
     'purchase': 'audio/sfx/purchase.wav',
     'unlock': 'audio/sfx/unlock.wav',
     'notification': 'audio/sfx/notification.wav',
+    'placement_invalid': 'audio/sfx/ui_error.wav',
+    'placement_cancel': 'audio/sfx/ui_click.wav',
   };
 
   /// Initialize the audio service
@@ -134,7 +136,7 @@ class AudioService {
       }
     });
     
-    // Handle player errors
+    // Handle player errors gracefully
     _musicPlayer.onLog.listen((String message) {
       developer.log('Music player: $message', name: 'AudioService');
     });
@@ -257,48 +259,55 @@ class AudioService {
 
   /// Fade in music
   Future<void> _fadeInMusic(String trackPath) async {
+    const int steps = 20;
+    const int intervalMs = 50;
+    final double stepVolume = _musicVolume / steps;
+
     await _musicPlayer.setVolume(0.0);
     await _musicPlayer.play(AssetSource(trackPath));
-    
-    const fadeDuration = Duration(milliseconds: 1500);
-    const steps = 30;
-     var stepDuration = Duration(milliseconds: fadeDuration.inMilliseconds ~/ steps);
-    
-    for (int i = 0; i <= steps; i++) {
-      final volume = (i / steps) * _musicVolume;
-      await _musicPlayer.setVolume(volume);
-      await Future.delayed(stepDuration);
-    }
+
+    _fadeTimer?.cancel();
+    _fadeTimer = Timer.periodic(const Duration(milliseconds: intervalMs), (timer) async {
+      final currentVolume = (timer.tick * stepVolume).clamp(0.0, _musicVolume);
+      await _musicPlayer.setVolume(currentVolume);
+
+      if (timer.tick >= steps) {
+        timer.cancel();
+        _fadeTimer = null;
+      }
+    });
   }
 
   /// Fade out music
   Future<void> _fadeOutMusic() async {
-    const fadeDuration = Duration(milliseconds: 1000);
-    const steps = 20;
-     var stepDuration = Duration(milliseconds: fadeDuration.inMilliseconds ~/ steps);
-    
-    final currentVolume = _musicVolume;
-    
-    for (int i = steps; i >= 0; i--) {
-      final volume = (i / steps) * currentVolume;
-      await _musicPlayer.setVolume(volume);
-      await Future.delayed(stepDuration);
-    }
-    
-    await _musicPlayer.stop();
-    await _musicPlayer.setVolume(_musicVolume);
+    const int steps = 20;
+    const int intervalMs = 50;
+    final double stepVolume = _musicVolume / steps;
+
+    _fadeTimer?.cancel();
+    _fadeTimer = Timer.periodic(const Duration(milliseconds: intervalMs), (timer) async {
+      final currentVolume = (_musicVolume - (timer.tick * stepVolume)).clamp(0.0, 1.0);
+      await _musicPlayer.setVolume(currentVolume);
+
+      if (currentVolume <= 0.0) {
+        timer.cancel();
+        _fadeTimer = null;
+        await _musicPlayer.stop();
+        await _musicPlayer.setVolume(_musicVolume);
+      }
+    });
   }
 
   // ========================================
   // SOUND EFFECTS
   // ========================================
 
-  /// Play sound effect
+  /// Play a sound effect
   Future<void> playSfx(String soundName, {double? volume}) async {
     if (!_isInitialized || !_sfxEnabled) return;
 
-    // Check cooldown to prevent audio spam
-    if (_isInCooldown(soundName)) return;
+    // Check cooldown to prevent spam
+    if (_isOnCooldown(soundName)) return;
 
     try {
       final soundPath = _soundEffects[soundName];
@@ -307,121 +316,42 @@ class AudioService {
         return;
       }
 
-      // Set volume
-      final effectiveVolume = (volume ?? 1.0) * _sfxVolume;
-      await _sfxPlayer.setVolume(effectiveVolume);
-
-      // Play sound
+      final playVolume = volume ?? _sfxVolume;
+      await _sfxPlayer.setVolume(playVolume);
       await _sfxPlayer.play(AssetSource(soundPath));
 
-      // Update cooldown
-      _updateCooldown(soundName);
-
-      developer.log('Played SFX: $soundName', name: 'AudioService');
+      _setSfxCooldown(soundName);
       
     } catch (e) {
       developer.log('Failed to play SFX $soundName: $e', name: 'AudioService');
     }
   }
 
-  /// Play line clear sound based on lines cleared
-  Future<void> playLineClearSound(int linesCleared) async {
-    String soundName;
-    
-    switch (linesCleared) {
-      case 1:
-        soundName = 'line_clear_single';
-        break;
-      case 2:
-        soundName = 'line_clear_double';
-        break;
-      case 3:
-        soundName = 'line_clear_triple';
-        break;
-      case 4:
-        soundName = 'line_clear_quad';
-        break;
-      default:
-        soundName = 'line_clear_mega';
-        break;
-    }
-    
-    await playSfx(soundName);
-  }
-
-  /// Play combo sound based on combo count
-  Future<void> playComboSound(int comboCount) async {
-    if (comboCount <= 0) return;
-    
-    final comboLevel = (comboCount - 1).clamp(0, 4);
-    await playSfx('combo_${comboLevel + 1}');
-  }
-
-  /// Check if sound is in cooldown period
-  bool _isInCooldown(String soundName) {
+  /// Check if sound effect is on cooldown
+  bool _isOnCooldown(String soundName) {
     final lastPlayed = _sfxCooldowns[soundName];
     if (lastPlayed == null) return false;
-    
-    const cooldownDuration = Duration(milliseconds: 50);
+
+    const cooldownDuration = Duration(milliseconds: 100);
     return DateTime.now().difference(lastPlayed) < cooldownDuration;
   }
 
-  /// Update cooldown for sound
-  void _updateCooldown(String soundName) {
+  /// Set cooldown for sound effect
+  void _setSfxCooldown(String soundName) {
     _sfxCooldowns[soundName] = DateTime.now();
   }
 
-  // ========================================
-  // VOLUME CONTROL
-  // ========================================
-
-  /// Set music volume (0.0 to 1.0)
-  Future<void> setMusicVolume(double volume) async {
-    _musicVolume = volume.clamp(0.0, 1.0);
+  /// Play UI sound with haptic feedback
+  Future<void> playUiSound(String soundName, {HapticType? haptic}) async {
+    await playSfx(soundName);
     
-    if (_isInitialized) {
-      await _musicPlayer.setVolume(_musicVolume);
+    if (haptic != null) {
+      await triggerHaptic(haptic);
     }
-    
-    developer.log('Music volume set to ${(_musicVolume * 100).toInt()}%', name: 'AudioService');
   }
-
-  /// Set SFX volume (0.0 to 1.0)
-  Future<void> setSfxVolume(double volume) async {
-    _sfxVolume = volume.clamp(0.0, 1.0);
-    
-    if (_isInitialized) {
-      await _sfxPlayer.setVolume(_sfxVolume);
-    }
-    
-    developer.log('SFX volume set to ${(_sfxVolume * 100).toInt()}%', name: 'AudioService');
-  }
-
-  /// Enable/disable music
-  Future<void> setMusicEnabled(bool enabled) async {
-    _musicEnabled = enabled;
-    
-    if (!enabled && _isMusicPlaying) {
-      await pauseMusic();
-    } else if (enabled && _isMusicPaused && _currentMusicTrack != null) {
-      await resumeMusic();
-    }
-    
-    developer.log('Music ${enabled ? 'enabled' : 'disabled'}', name: 'AudioService');
-  }
-
-  /// Enable/disable sound effects
-  void setSfxEnabled(bool enabled) {
-    _sfxEnabled = enabled;
-    developer.log('SFX ${enabled ? 'enabled' : 'disabled'}', name: 'AudioService');
-  }
-
-  // ========================================
-  // HAPTIC FEEDBACK
-  // ========================================
 
   /// Trigger haptic feedback
-  Future<void> vibrate({HapticType type = HapticType.light}) async {
+  Future<void> triggerHaptic(HapticType type) async {
     try {
       switch (type) {
         case HapticType.light:
@@ -443,8 +373,95 @@ class AudioService {
   }
 
   // ========================================
-  // UTILITY METHODS
+  // VOLUME CONTROL
   // ========================================
+
+  /// Set music volume
+  Future<void> setMusicVolume(double volume) async {
+    _musicVolume = volume.clamp(0.0, 1.0);
+    
+    if (_isInitialized) {
+      await _musicPlayer.setVolume(_musicVolume);
+    }
+    
+    developer.log('Music volume set to: $_musicVolume', name: 'AudioService');
+  }
+
+  /// Set SFX volume
+  Future<void> setSfxVolume(double volume) async {
+    _sfxVolume = volume.clamp(0.0, 1.0);
+    
+    if (_isInitialized) {
+      await _sfxPlayer.setVolume(_sfxVolume);
+    }
+    
+    developer.log('SFX volume set to: $_sfxVolume', name: 'AudioService');
+  }
+
+  /// Enable/disable music
+  Future<void> setMusicEnabled(bool enabled) async {
+    _musicEnabled = enabled;
+    
+    if (!enabled && _isMusicPlaying) {
+      await pauseMusic();
+    } else if (enabled && _currentMusicTrack != null) {
+      await resumeMusic();
+    }
+    
+    developer.log('Music enabled: $enabled', name: 'AudioService');
+  }
+
+  /// Enable/disable sound effects
+  void setSfxEnabled(bool enabled) {
+    _sfxEnabled = enabled;
+    developer.log('SFX enabled: $enabled', name: 'AudioService');
+  }
+
+  // ========================================
+  // GAME-SPECIFIC AUDIO
+  // ========================================
+
+  /// Play combo sound based on combo count
+  Future<void> playComboSound(int comboCount) async {
+    final soundName = 'combo_${comboCount.clamp(1, 5)}';
+    await playSfx(soundName);
+  }
+
+  /// Play line clear sound based on lines cleared
+  Future<void> playLineClearSound(int linesCleared) async {
+    String soundName;
+    switch (linesCleared) {
+      case 1:
+        soundName = 'line_clear_single';
+        break;
+      case 2:
+        soundName = 'line_clear_double';
+        break;
+      case 3:
+        soundName = 'line_clear_triple';
+        break;
+      case 4:
+        soundName = 'line_clear_quad';
+        break;
+      default:
+        soundName = 'line_clear_mega';
+        break;
+    }
+    await playSfx(soundName);
+  }
+
+  /// Play achievement sound
+  Future<void> playAchievementSound() async {
+    await playSfx('achievement_unlock');
+    await triggerHaptic(HapticType.medium);
+  }
+
+  // ========================================
+  // GETTERS
+  // ========================================
+
+  /// Check if audio service is initialized
+  bool get isInitialized => _isInitialized;
 
   /// Get current music track
   String? get currentMusicTrack => _currentMusicTrack;

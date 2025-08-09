@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:puzzle_box/core/state/player_state.dart';
+import 'package:puzzle_box/core/state/player_state.dart' hide PlayerState;
 import 'package:puzzle_box/core/state/state_extensions.dart';
 import 'package:puzzle_box/core/state/ui_state.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';

@@ -6,7 +6,7 @@ enum PowerUpType {
   undo,
   hint,
   bomb,
-  freeze,
+  freeze, hammer, lineClear,
 }
 
 enum PowerUpRarity {
@@ -54,7 +54,7 @@ class PowerUp extends Equatable {
       properties: {
         'generateNewBlocks': true,
         'clearCurrentBlocks': true,
-      },
+      }, id: '',
     ),
     
     PowerUpType.undo: PowerUp(
@@ -68,7 +68,7 @@ class PowerUp extends Equatable {
       properties: {
         'stepsBack': 1,
         'restoreScore': true,
-      },
+      }, id: '',
     ),
     
     PowerUpType.hint: PowerUp(
@@ -82,7 +82,7 @@ class PowerUp extends Equatable {
       properties: {
         'showOptimalPlacement': true,
         'highlightDuration': 3000,
-      },
+      }, id: '',
     ),
     
     PowerUpType.bomb: PowerUp(
@@ -113,7 +113,7 @@ class PowerUp extends Equatable {
       properties: {
         'freezeDuration': 10000,
         'pauseTimer': true,
-      },
+      }, id: '',
     ),
   };
   
@@ -140,7 +140,7 @@ class PowerUp extends Equatable {
       cooldown: cooldown ?? this.cooldown,
       maxUses: maxUses ?? this.maxUses,
       color: color ?? this.color,
-      properties: properties ?? this.properties,
+      properties: properties ?? this.properties, id: '',
     );
   }
   
@@ -182,6 +182,12 @@ class PowerUp extends Equatable {
         return 'Destroys blocks in a ${getProperty('explosionRadius', 3)}x${getProperty('explosionRadius', 3)} area';
       case PowerUpType.freeze:
         return 'Pauses all timers for ${getProperty('freezeDuration', 10000)! ~/ 1000} seconds';
+      case PowerUpType.hammer:
+        // TODO: Handle this case.
+        throw UnimplementedError();
+      case PowerUpType.lineClear:
+        // TODO: Handle this case.
+        throw UnimplementedError();
     }
   }
   
