@@ -3,6 +3,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:puzzle_box/core/state/ui_state.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
 import '../widgets/common/gradient_button.dart';

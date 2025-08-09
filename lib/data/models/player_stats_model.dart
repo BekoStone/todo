@@ -52,12 +52,12 @@ class PlayerStatsModel extends Equatable {
       lastPlayDate: now,
       currentCoins: 100,
       totalCoinsEarned: 100,
-      powerUpInventory: {
+      powerUpInventory: const {
         'shuffle': 2,
         'undo': 3,
         'hint': 1,
       },
-      settings: {
+      settings: const {
         'musicEnabled': true,
         'sfxEnabled': true,
         'musicVolume': 0.5,

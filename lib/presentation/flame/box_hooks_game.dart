@@ -1,6 +1,7 @@
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
+import 'package:puzzle_box/core/state/ui_state.dart';
 import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';

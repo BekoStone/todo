@@ -1,12 +1,19 @@
 // File: lib/core/state/state_extensions.dart
 // Extensions and classes to support proper state management
 
+import 'dart:ui';
+
+import 'package:puzzle_box/core/state/player_state.dart';
+import 'package:puzzle_box/core/state/ui_state.dart';
+import 'package:puzzle_box/domain/entities/game_session_entity.dart';
+import 'package:puzzle_box/domain/entities/player_stats_entity.dart';
 import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
+import 'package:puzzle_box/presentation/flame/box_hooks_game.dart' hide PlayerStateStatus;
 
 /// Extensions for GameState to add helper methods
-extension GameStateExtensions on GameState {
+extension GameStateExtensions on GameStatea {
   /// Check if game is currently being played
   bool get isPlaying => status == GameStateStatus.playing;
   
@@ -80,9 +87,9 @@ class StateHelper {
     return {
       'totalCoins': state.safeCoins,
       'highScore': state.safeHighScore,
-      'gamesPlayed': state.playerStats?.gamesPlayed ?? 0,
+      'gamesPlayed': state.playerStats?.totalGamesPlayed ?? 0,
       'achievementsUnlocked': state.unlockedAchievements,
-      'totalAchievements': state.totalAchievements,
+      'totalAchievements': state.unlockedAchievements,
       'hasUnseenAchievements': state.hasUnseenAchievements,
     };
   }
@@ -106,7 +113,7 @@ class StateSynchronizer {
         linesCleared: gameState.linesCleared,
         blocksPlaced: 0, // Would be tracked in actual game state
         gameDuration: gameState.sessionDuration ?? Duration.zero,
-        usedUndo: gameState.remainingUndos < 3,
+        usedUndo: gameState.remainingUndos < 3, usedPowerUps: {},
       );
     }
   }

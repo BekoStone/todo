@@ -1,11 +1,10 @@
 import 'package:flutter/foundation.dart';
-import 'package:puzzle_box/data/datasources/local_storage_datasource.dart';
-import 'package:puzzle_box/data/models/achievement_model.dart';
-import 'package:puzzle_box/data/models/player_stats_model.dart';
-import 'package:puzzle_box/domain/entities/achievement_entity.dart';
 import 'package:puzzle_box/domain/entities/player_stats_entity.dart';
 import 'package:puzzle_box/domain/entities/power_up_entity.dart';
 import '../../domain/repositories/player_repository.dart';
+import '../datasources/local_storage_datasource.dart';
+import '../models/player_stats_model.dart';
+import '../models/achievement_model.dart';
 
 class PlayerRepositoryImpl implements PlayerRepository {
   final LocalStorageDataSource _dataSource;

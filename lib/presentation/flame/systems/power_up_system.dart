@@ -61,73 +61,73 @@ class PowerUpSystem extends Component with HasGameRef {
   /// Initialize available power-ups
   Future<void> _initializePowerUps() async {
     // Register all available power-ups
-    _registerPowerUp(PowerUp(
+    _registerPowerUp(const PowerUp(
       id: 'hammer',
       name: 'Hammer',
       description: 'Destroy a single block on the grid',
       icon: 'hammer',
       rarity: PowerUpRarity.common,
-      cooldown: const Duration(seconds: 30),
+      cooldown: Duration(seconds: 30),
       uses: 1,
     ));
     
-    _registerPowerUp(PowerUp(
+    _registerPowerUp(const PowerUp(
       id: 'bomb',
       name: 'Bomb',
       description: 'Clear a 3x3 area around target',
       icon: 'bomb',
       rarity: PowerUpRarity.rare,
-      cooldown: const Duration(seconds: 60),
+      cooldown: Duration(seconds: 60),
       uses: 1,
     ));
     
-    _registerPowerUp(PowerUp(
+    _registerPowerUp(const PowerUp(
       id: 'line_clear',
       name: 'Line Clear',
       description: 'Clear a complete row or column',
       icon: 'line_clear',
       rarity: PowerUpRarity.common,
-      cooldown: const Duration(seconds: 45),
+      cooldown: Duration(seconds: 45),
       uses: 1,
     ));
     
-    _registerPowerUp(PowerUp(
+    _registerPowerUp(const PowerUp(
       id: 'shuffle',
       name: 'Shuffle',
       description: 'Replace current blocks with new ones',
       icon: 'shuffle',
       rarity: PowerUpRarity.common,
-      cooldown: const Duration(seconds: 90),
+      cooldown: Duration(seconds: 90),
       uses: 1,
     ));
     
-    _registerPowerUp(PowerUp(
+    _registerPowerUp(const PowerUp(
       id: 'time_freeze',
       name: 'Time Freeze',
       description: 'Pause the timer for 30 seconds',
       icon: 'time_freeze',
       rarity: PowerUpRarity.epic,
-      cooldown: const Duration(seconds: 120),
+      cooldown: Duration(seconds: 120),
       uses: 1,
     ));
     
-    _registerPowerUp(PowerUp(
+    _registerPowerUp(const PowerUp(
       id: 'multiplier',
       name: 'Score Multiplier',
       description: '2x score for 60 seconds',
       icon: 'multiplier',
       rarity: PowerUpRarity.rare,
-      cooldown: const Duration(seconds: 180),
+      cooldown: Duration(seconds: 180),
       uses: 1,
     ));
     
-    _registerPowerUp(PowerUp(
+    _registerPowerUp(const PowerUp(
       id: 'ghost_block',
       name: 'Ghost Block',
       description: 'Next block can overlap existing blocks',
       icon: 'ghost',
       rarity: PowerUpRarity.epic,
-      cooldown: const Duration(seconds: 150),
+      cooldown: Duration(seconds: 150),
       uses: 1,
     ));
     

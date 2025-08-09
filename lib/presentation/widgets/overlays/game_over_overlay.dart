@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
+import 'package:puzzle_box/core/theme/colors.dart';
 import 'package:puzzle_box/domain/entities/achievement_entity.dart';
 import 'package:puzzle_box/domain/entities/game_session_entity.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
@@ -741,7 +742,7 @@ class ParticlePainter extends CustomPainter {
       final y = size.height * progress;
       final alpha = (1.0 - progress * progress) * 0.7;
       
-      paint.color = AppTheme.blockColors[i % AppTheme.blockColors.length]
+      paint.color = AppColors.blockColors[i % AppColors.blockColors.length]
           .withOpacity(alpha);
       
       canvas.drawCircle(

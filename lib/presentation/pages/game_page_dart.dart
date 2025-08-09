@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flame/game.dart';
 import 'package:puzzle_box/core/constants/app_constants.dart';
+import 'package:puzzle_box/core/state/ui_state.dart';
+import 'package:puzzle_box/domain/entities/game_session_entity.dart';
 import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
@@ -342,7 +344,7 @@ class _GamePageState extends State<GamePage>
 
   Widget _buildGameBackground() {
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -351,7 +353,7 @@ class _GamePageState extends State<GamePage>
             AppColors.primaryBlue,
             AppColors.primaryPurple,
           ],
-          stops: [0.0, 0.7, 1.0],
+          stops: const [0.0, 0.7, 1.0],
         ),
       ),
     );

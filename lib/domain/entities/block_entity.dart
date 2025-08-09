@@ -1,67 +1,285 @@
-import 'dart:ui';
-
+import 'dart:math' as math;
 import 'package:equatable/equatable.dart';
-import 'package:flame/components.dart';
+import 'package:puzzle_box/core/theme/colors.dart';
 
+/// Block entity represents a game piece that can be placed on the grid.
+/// Contains shape data, color information, and placement logic.
+/// Immutable entity following Clean Architecture principles.
 class Block extends Equatable {
+  /// Unique identifier for this block instance
   final String id;
-  final List<List<int>> shape;
-  final Vector2 position;
-  final Vector2 originalPosition;
-  final bool isLocked;
-  final bool isActive;
-  final int colorIndex;
-  final DateTime createdAt;
   
+  /// Shape matrix (1 = filled, 0 = empty)
+  final List<List<int>> shape;
+  
+  /// Color ID (corresponds to AppColors.blockColors index)
+  final int colorId;
+  
+  /// Block type identifier
+  final BlockType type;
+  
+  /// Rotation state (0, 1, 2, 3 for 0°, 90°, 180°, 270°)
+  final int rotation;
+  
+  /// Whether this block can be rotated
+  final bool canRotate;
+  
+  /// Block rarity (affects spawning probability)
+  final BlockRarity rarity;
+  
+  /// Creation timestamp
+  final DateTime createdAt;
+
   const Block({
     required this.id,
     required this.shape,
-    required this.position,
-    required this.originalPosition,
-    this.isLocked = false,
-    this.isActive = true,
-    this.colorIndex = 0,
+    required this.colorId,
+    required this.type,
+    this.rotation = 0,
+    this.canRotate = true,
+    this.rarity = BlockRarity.common,
     required this.createdAt,
   });
-  
-  // Factory constructor for creating blocks from shapes
-  factory Block.fromShape(List<List<int>> shape, Vector2 position) {
-    final id = 'block_${DateTime.now().millisecondsSinceEpoch}_${shape.hashCode}';
-    
+
+  /// Create a basic single-cell block
+  factory Block.single({
+    String? id,
+    int? colorId,
+  }) {
     return Block(
-      id: id,
-      shape: shape,
-      position: position,
-      originalPosition: position.clone(),
-      colorIndex: shape.hashCode.abs() % 8, // 8 colors available
+      id: id ?? _generateId(),
+      shape: const [[1]],
+      colorId: colorId ?? _randomColorId(),
+      type: BlockType.single,
+      canRotate: false,
+      rarity: BlockRarity.common,
       createdAt: DateTime.now(),
     );
   }
-  
-  // Copy with modifications
+
+  /// Create a line block (I-piece)
+  factory Block.line({
+    String? id,
+    int? colorId,
+    int length = 4,
+  }) {
+    final shape = [List.filled(length, 1)];
+    return Block(
+      id: id ?? _generateId(),
+      shape: shape,
+      colorId: colorId ?? _randomColorId(),
+      type: BlockType.line,
+      canRotate: true,
+      rarity: BlockRarity.common,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  /// Create a square block (O-piece)
+  factory Block.square({
+    String? id,
+    int? colorId,
+    int size = 2,
+  }) {
+    final shape = List.generate(size, (_) => List.filled(size, 1));
+    return Block(
+      id: id ?? _generateId(),
+      shape: shape,
+      colorId: colorId ?? _randomColorId(),
+      type: BlockType.square,
+      canRotate: false, // Square doesn't need rotation
+      rarity: BlockRarity.common,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  /// Create an L-shaped block
+  factory Block.lShape({
+    String? id,
+    int? colorId,
+    bool reversed = false,
+  }) {
+    final shape = reversed
+        ? [[0, 1], [0, 1], [1, 1]] // J-piece
+        : [[1, 0], [1, 0], [1, 1]]; // L-piece
+    
+    return Block(
+      id: id ?? _generateId(),
+      shape: shape,
+      colorId: colorId ?? _randomColorId(),
+      type: reversed ? BlockType.jShape : BlockType.lShape,
+      canRotate: true,
+      rarity: BlockRarity.uncommon,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  /// Create a T-shaped block
+  factory Block.tShape({
+    String? id,
+    int? colorId,
+  }) {
+    const shape = [
+      [0, 1, 0],
+      [1, 1, 1],
+    ];
+    
+    return Block(
+      id: id ?? _generateId(),
+      shape: shape,
+      colorId: colorId ?? _randomColorId(),
+      type: BlockType.tShape,
+      canRotate: true,
+      rarity: BlockRarity.uncommon,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  /// Create an S or Z shaped block
+  factory Block.sShape({
+    String? id,
+    int? colorId,
+    bool zShape = false,
+  }) {
+    final shape = zShape
+        ? [[1, 1, 0], [0, 1, 1]] // Z-piece
+        : [[0, 1, 1], [1, 1, 0]]; // S-piece
+    
+    return Block(
+      id: id ?? _generateId(),
+      shape: shape,
+      colorId: colorId ?? _randomColorId(),
+      type: zShape ? BlockType.zShape : BlockType.sShape,
+      canRotate: true,
+      rarity: BlockRarity.rare,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  /// Create a random block based on level and difficulty
+  factory Block.createRandom({
+    int level = 1,
+    String? id,
+  }) {
+    final random = math.Random();
+    
+    // Determine block type based on level and probability
+    final blockType = _getRandomBlockType(level, random);
+    final colorId = random.nextInt(AppColors.blockColors.length);
+    
+    switch (blockType) {
+      case BlockType.single:
+        return Block.single(id: id, colorId: colorId);
+      case BlockType.line:
+        final length = _getRandomLineLength(level, random);
+        return Block.line(id: id, colorId: colorId, length: length);
+      case BlockType.square:
+        final size = level > 5 ? (random.nextBool() ? 2 : 3) : 2;
+        return Block.square(id: id, colorId: colorId, size: size);
+      case BlockType.lShape:
+        return Block.lShape(id: id, colorId: colorId);
+      case BlockType.jShape:
+        return Block.lShape(id: id, colorId: colorId, reversed: true);
+      case BlockType.tShape:
+        return Block.tShape(id: id, colorId: colorId);
+      case BlockType.sShape:
+        return Block.sShape(id: id, colorId: colorId);
+      case BlockType.zShape:
+        return Block.sShape(id: id, colorId: colorId, zShape: true);
+      case BlockType.custom:
+        // TODO: Handle this case.
+        throw UnimplementedError();
+    }
+  }
+
+  /// Create a block from predefined shape
+  factory Block.fromShape({
+    required List<List<int>> shape,
+    String? id,
+    int? colorId,
+    BlockType? type,
+  }) {
+    return Block(
+      id: id ?? _generateId(),
+      shape: shape,
+      colorId: colorId ?? _randomColorId(),
+      type: type ?? _detectBlockType(shape),
+      canRotate: true,
+      rarity: BlockRarity.common,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  // ========================================
+  // BLOCK OPERATIONS
+  // ========================================
+
+  /// Rotate the block 90 degrees clockwise
+  Block rotate() {
+    if (!canRotate) return this;
+    
+    final rotatedShape = _rotateShapeClockwise(shape);
+    final newRotation = (rotation + 1) % 4;
+    
+    return copyWith(
+      shape: rotatedShape,
+      rotation: newRotation,
+    );
+  }
+
+  /// Get the block rotated to a specific rotation state
+  Block rotateTo(int targetRotation) {
+    if (!canRotate) return this;
+    
+    final rotationDiff = (targetRotation - rotation) % 4;
+    Block rotatedBlock = this;
+    
+    for (int i = 0; i < rotationDiff; i++) {
+      rotatedBlock = rotatedBlock.rotate();
+    }
+    
+    return rotatedBlock;
+  }
+
+  /// Create a copy of this block with updated properties
   Block copyWith({
     String? id,
     List<List<int>>? shape,
-    Vector2? position,
-    Vector2? originalPosition,
-    bool? isLocked,
-    bool? isActive,
-    int? colorIndex,
+    int? colorId,
+    BlockType? type,
+    int? rotation,
+    bool? canRotate,
+    BlockRarity? rarity,
     DateTime? createdAt,
   }) {
     return Block(
       id: id ?? this.id,
       shape: shape ?? this.shape,
-      position: position ?? this.position,
-      originalPosition: originalPosition ?? this.originalPosition,
-      isLocked: isLocked ?? this.isLocked,
-      isActive: isActive ?? this.isActive,
-      colorIndex: colorIndex ?? this.colorIndex,
+      colorId: colorId ?? this.colorId,
+      type: type ?? this.type,
+      rotation: rotation ?? this.rotation,
+      canRotate: canRotate ?? this.canRotate,
+      rarity: rarity ?? this.rarity,
       createdAt: createdAt ?? this.createdAt,
     );
   }
-  
-  // Block properties
+
+  // ========================================
+  // BLOCK PROPERTIES
+  // ========================================
+
+  /// Get the width of the block (number of columns)
+  int get width {
+    if (shape.isEmpty) return 0;
+    return shape.first.length;
+  }
+
+  /// Get the height of the block (number of rows)
+  int get height {
+    return shape.length;
+  }
+
+  /// Get the number of filled cells in the block
   int get cellCount {
     int count = 0;
     for (final row in shape) {
@@ -71,291 +289,313 @@ class Block extends Equatable {
     }
     return count;
   }
-  
-  Vector2 get dimensions {
-    return Vector2(shape[0].length.toDouble(), shape.length.toDouble());
-  }
-  
-  double get width => shape[0].length.toDouble();
-  double get height => shape.length.toDouble();
-  
-  // Get occupied cell positions relative to block
-  List<Vector2> get occupiedCells {
-    final cells = <Vector2>[];
-    for (int row = 0; row < shape.length; row++) {
-      for (int col = 0; col < shape[row].length; col++) {
+
+  /// Get the bounding box of the block (minimal rectangle containing all cells)
+  ({int minRow, int maxRow, int minCol, int maxCol}) get boundingBox {
+    int minRow = height;
+    int maxRow = -1;
+    int minCol = width;
+    int maxCol = -1;
+    
+    for (int row = 0; row < height; row++) {
+      for (int col = 0; col < width; col++) {
         if (shape[row][col] == 1) {
-          cells.add(Vector2(col.toDouble(), row.toDouble()));
+          minRow = math.min(minRow, row);
+          maxRow = math.max(maxRow, row);
+          minCol = math.min(minCol, col);
+          maxCol = math.max(maxCol, col);
         }
       }
     }
-    return cells;
-  }
-  
-  // Get absolute positions on grid
-  List<Vector2> getAbsolutePositions(Vector2 gridOffset) {
-    return occupiedCells.map((cell) => gridOffset + cell).toList();
-  }
-  
-  // Transformations
-  Block rotate90() {
-    final rows = shape.length;
-    final cols = shape[0].length;
-    final rotated = List.generate(cols, (_) => List.filled(rows, 0));
     
-    for (int row = 0; row < rows; row++) {
-      for (int col = 0; col < cols; col++) {
-        rotated[col][rows - 1 - row] = shape[row][col];
-      }
-    }
-    
-    return copyWith(shape: rotated);
-  }
-  
-  Block flipHorizontal() {
-    final flipped = shape.map((row) => row.reversed.toList()).toList();
-    return copyWith(shape: flipped);
-  }
-  
-  Block flipVertical() {
-    final flipped = shape.reversed.toList();
-    return copyWith(shape: flipped);
-  }
-  
-  // Position updates
-  Block moveTo(Vector2 newPosition) {
-    return copyWith(position: newPosition);
-  }
-  
-  Block resetToOriginalPosition() {
-    return copyWith(position: originalPosition.clone());
-  }
-  
-  Block updateOriginalPosition(Vector2 newPosition) {
-    return copyWith(
-      position: newPosition,
-      originalPosition: newPosition.clone(),
+    return (
+      minRow: minRow == height ? 0 : minRow,
+      maxRow: maxRow == -1 ? 0 : maxRow,
+      minCol: minCol == width ? 0 : minCol,
+      maxCol: maxCol == -1 ? 0 : maxCol,
     );
   }
-  
-  // State changes
-  Block lock() => copyWith(isLocked: true);
-  Block unlock() => copyWith(isLocked: false);
-  Block activate() => copyWith(isActive: true);
-  Block deactivate() => copyWith(isActive: false);
-  
-  // Collision detection helpers
-  bool collidesWith(Block other, {double tolerance = 0.1}) {
-    final myPositions = getAbsolutePositions(position);
-    final otherPositions = other.getAbsolutePositions(other.position);
+
+  /// Check if the block is symmetric (same after 180-degree rotation)
+  bool get isSymmetric {
+    final rotated = rotate().rotate();
+    return _shapesEqual(shape, rotated.shape);
+  }
+
+  /// Get the block's center of mass
+  ({double row, double col}) get centerOfMass {
+    double totalRow = 0;
+    double totalCol = 0;
+    int count = 0;
     
-    for (final myPos in myPositions) {
-      for (final otherPos in otherPositions) {
-        if ((myPos - otherPos).length < tolerance) {
-          return true;
+    for (int row = 0; row < height; row++) {
+      for (int col = 0; col < width; col++) {
+        if (shape[row][col] == 1) {
+          totalRow += row;
+          totalCol += col;
+          count++;
         }
       }
     }
-    return false;
-  }
-  
-  bool canFitInGrid(Vector2 gridPosition, int gridSize) {
-    final absolutePositions = getAbsolutePositions(gridPosition);
     
-    for (final pos in absolutePositions) {
-      if (pos.x < 0 || pos.x >= gridSize || pos.y < 0 || pos.y >= gridSize) {
-        return false;
-      }
-    }
-    return true;
+    return count > 0
+        ? (row: totalRow / count, col: totalCol / count)
+        : (row: 0.0, col: 0.0);
   }
-  
-  // Block analysis
-  double get density => cellCount / (width * height);
-  
-  double get complexity {
-    // More complex shapes have lower density and irregular patterns
-    final aspectRatio = width > height ? width / height : height / width;
-    return (1 - density) + (aspectRatio - 1) * 0.5;
-  }
-  
-  String get shapeType {
-    if (width == 1 && height == 1) return 'single';
-    if (width == 1 || height == 1) return 'line';
-    if (width == height && density == 1.0) return 'square';
-    if (cellCount == 3) return 'small';
-    if (cellCount >= 5) return 'large';
-    return 'medium';
-  }
-  
-  // Bounding box
-  Rect get boundingBox {
-    if (occupiedCells.isEmpty) {
-      return Rect.fromLTWH(position.x, position.y, width, height);
-    }
-    
-    double minX = double.infinity;
-    double minY = double.infinity;
-    double maxX = double.negativeInfinity;
-    double maxY = double.negativeInfinity;
-    
-    for (final cell in occupiedCells) {
-      final absolutePos = position + cell;
-      minX = minX < absolutePos.x ? minX : absolutePos.x;
-      minY = minY < absolutePos.y ? minY : absolutePos.y;
-      maxX = maxX > absolutePos.x ? maxX : absolutePos.x;
-      maxY = maxY > absolutePos.y ? maxY : absolutePos.y;
-    }
-    
-    return Rect.fromLTRB(minX, minY, maxX + 1, maxY + 1);
-  }
-  
-  // Pattern matching
-  bool matchesPattern(List<List<int>> pattern) {
-    if (shape.length != pattern.length) return false;
-    if (shape[0].length != pattern[0].length) return false;
-    
-    for (int row = 0; row < shape.length; row++) {
-      for (int col = 0; col < shape[row].length; col++) {
-        if (shape[row][col] != pattern[row][col]) return false;
-      }
-    }
-    return true;
-  }
-  
-  // Scoring helpers
-  int getScoreValue() {
-    // Base score depends on cell count and complexity
-    return (cellCount * 10 * (1 + complexity)).round();
-  }
-  
-  int getPlacementBonus(int level) {
-    return (getScoreValue() * 0.1 * level).round();
-  }
-  
-  @override
-  List<Object?> get props => [
-    id,
-    shape,
-    position,
-    originalPosition,
-    isLocked,
-    isActive,
-    colorIndex,
-    createdAt,
-  ];
-  
-  @override
-  String toString() {
-    return 'Block(id: $id, cells: $cellCount, pos: $position, locked: $isLocked)';
-  }
-}
 
-// Block factory for creating common shapes
-class BlockFactory {
-  static const List<List<List<int>>> commonShapes = [
-    // Single block
-    [[1]],
-    
-    // 2-block shapes
-    [[1, 1]],
-    [[1], [1]],
-    
-    // 3-block shapes
-    [[1, 1, 1]],
-    [[1], [1], [1]],
-    [[1, 1], [1, 0]],
-    [[1, 1], [0, 1]],
-    
-    // 4-block shapes (Tetris-like)
-    [[1, 1], [1, 1]], // Square
-    [[1, 1, 1, 1]], // I-piece horizontal
-    [[1], [1], [1], [1]], // I-piece vertical
-    [[1, 1, 1], [0, 1, 0]], // T-piece
-    [[1, 0, 0], [1, 1, 1]], // L-piece
-    [[0, 0, 1], [1, 1, 1]], // J-piece
-    [[1, 1, 0], [0, 1, 1]], // S-piece
-    [[0, 1, 1], [1, 1, 0]], // Z-piece
-    
-    // 5-block shapes
-    [[1, 1, 1, 1, 1]], // Long line
-    [[0, 1, 0], [1, 1, 1], [0, 1, 0]], // Plus
-    [[1, 0, 1], [1, 1, 1]], // U-shape
-    
-    // Complex shapes
-    [[1, 1, 1], [1, 0, 0], [1, 0, 0]], // Corner
-    [[1, 1, 1], [1, 1, 1], [1, 1, 1]], // 3x3 square
-  ];
-  
-  static Block createRandomBlock(Vector2 position) {
-    final shape = (commonShapes..shuffle()).first;
-    return Block.fromShape(shape, position);
+  // ========================================
+  // VALIDATION METHODS
+  // ========================================
+
+  /// Check if this block can fit at the given position on a grid
+  bool canFitAt(List<List<int>> grid, int row, int col) {
+    for (int r = 0; r < height; r++) {
+      for (int c = 0; c < width; c++) {
+        if (shape[r][c] == 1) {
+          final gridRow = row + r;
+          final gridCol = col + c;
+          
+          // Check bounds
+          if (gridRow < 0 || gridRow >= grid.length ||
+              gridCol < 0 || gridCol >= grid[0].length) {
+            return false;
+          }
+          
+          // Check if cell is occupied
+          if (grid[gridRow][gridCol] != 0) {
+            return false;
+          }
+        }
+      }
+    }
+    return true;
   }
-  
-  static Block createBlockByType(String type, Vector2 position) {
-    List<List<int>> shape;
+
+  /// Get all valid positions where this block can be placed on a grid
+  List<({int row, int col})> getValidPositions(List<List<int>> grid) {
+    final validPositions = <({int row, int col})>[];
     
-    switch (type) {
-      case 'single':
-        shape = [[1]];
-        break;
-      case 'line2':
-        shape = [[1, 1]];
-        break;
-      case 'line3':
-        shape = [[1, 1, 1]];
-        break;
-      case 'square':
-        shape = [[1, 1], [1, 1]];
-        break;
-      case 'tpiece':
-        shape = [[1, 1, 1], [0, 1, 0]];
-        break;
-      case 'lpiece':
-        shape = [[1, 0, 0], [1, 1, 1]];
-        break;
-      default:
-        shape = [[1]];
+    for (int row = 0; row < grid.length; row++) {
+      for (int col = 0; col < grid[0].length; col++) {
+        if (canFitAt(grid, row, col)) {
+          validPositions.add((row: row, col: col));
+        }
+      }
     }
     
-    return Block.fromShape(shape, position);
+    return validPositions;
   }
-  
-  static List<Block> createBlockSet(Vector2 basePosition, {int count = 3}) {
-    final blocks = <Block>[];
-    final usedShapes = <List<List<int>>>[];
+
+  // ========================================
+  // SERIALIZATION
+  // ========================================
+
+  /// Convert block to JSON for persistence
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'shape': shape,
+      'colorId': colorId,
+      'type': type.name,
+      'rotation': rotation,
+      'canRotate': canRotate,
+      'rarity': rarity.name,
+      'createdAt': createdAt.toIso8601String(),
+    };
+  }
+
+  /// Create block from JSON
+  factory Block.fromJson(Map<String, dynamic> json) {
+    return Block(
+      id: json['id'] as String,
+      shape: (json['shape'] as List).map((row) => 
+          (row as List).map((cell) => cell as int).toList()).toList(),
+      colorId: json['colorId'] as int,
+      type: BlockType.values.firstWhere((t) => t.name == json['type']),
+      rotation: json['rotation'] as int? ?? 0,
+      canRotate: json['canRotate'] as bool? ?? true,
+      rarity: BlockRarity.values.firstWhere(
+        (r) => r.name == json['rarity'],
+        orElse: () => BlockRarity.common,
+      ),
+      createdAt: DateTime.parse(json['createdAt'] as String),
+    );
+  }
+
+  // ========================================
+  // PRIVATE HELPER METHODS
+  // ========================================
+
+  /// Generate a unique ID for the block
+  static String _generateId() {
+    return 'block_${DateTime.now().millisecondsSinceEpoch}_${math.Random().nextInt(1000)}';
+  }
+
+  /// Get a random color ID
+  static int _randomColorId() {
+    return math.Random().nextInt(AppColors.blockColors.length);
+  }
+
+  /// Rotate a shape matrix 90 degrees clockwise
+  static List<List<int>> _rotateShapeClockwise(List<List<int>> shape) {
+    final rows = shape.length;
+    final cols = shape.first.length;
     
-    for (int i = 0; i < count; i++) {
-      List<List<int>> shape;
-      
-      // Ensure variety in shapes
-      do {
-        shape = (commonShapes..shuffle()).first;
-      } while (usedShapes.any((used) => _shapesEqual(used, shape)) && usedShapes.length < commonShapes.length);
-      
-      usedShapes.add(shape);
-      
-      final blockPosition = Vector2(
-        basePosition.x + (i * 100), // Spread blocks horizontally
-        basePosition.y,
-      );
-      
-      blocks.add(Block.fromShape(shape, blockPosition));
+    final rotated = List.generate(cols, (_) => List.filled(rows, 0));
+    
+    for (int r = 0; r < rows; r++) {
+      for (int c = 0; c < cols; c++) {
+        rotated[c][rows - 1 - r] = shape[r][c];
+      }
     }
     
-    return blocks;
+    return rotated;
   }
-  
+
+  /// Check if two shapes are equal
   static bool _shapesEqual(List<List<int>> shape1, List<List<int>> shape2) {
     if (shape1.length != shape2.length) return false;
     
-    for (int row = 0; row < shape1.length; row++) {
-      if (shape1[row].length != shape2[row].length) return false;
-      for (int col = 0; col < shape1[row].length; col++) {
-        if (shape1[row][col] != shape2[row][col]) return false;
+    for (int r = 0; r < shape1.length; r++) {
+      if (shape1[r].length != shape2[r].length) return false;
+      for (int c = 0; c < shape1[r].length; c++) {
+        if (shape1[r][c] != shape2[r][c]) return false;
       }
     }
     
     return true;
+  }
+
+  /// Detect block type from shape
+  static BlockType _detectBlockType(List<List<int>> shape) {
+    final height = shape.length;
+    final width = shape.first.length;
+    
+    // Count filled cells
+    int cellCount = 0;
+    for (final row in shape) {
+      for (final cell in row) {
+        if (cell == 1) cellCount++;
+      }
+    }
+    
+    // Simple detection logic
+    if (cellCount == 1) return BlockType.single;
+    if (height == 1 || width == 1) return BlockType.line;
+    if (height == width && cellCount == height * width) return BlockType.square;
+    
+    // Default to custom for complex shapes
+    return BlockType.custom;
+  }
+
+  /// Get random block type based on level
+  static BlockType _getRandomBlockType(int level, math.Random random) {
+    // Probability weights based on level
+    final weights = <BlockType, double>{
+      BlockType.single: math.max(0.4 - (level * 0.02), 0.1),
+      BlockType.line: 0.3,
+      BlockType.square: 0.2,
+      BlockType.lShape: math.min(0.1 + (level * 0.01), 0.2),
+      BlockType.tShape: math.min(0.05 + (level * 0.01), 0.15),
+      BlockType.sShape: math.min(0.02 + (level * 0.005), 0.1),
+    };
+    
+    final totalWeight = weights.values.reduce((a, b) => a + b);
+    final randomValue = random.nextDouble() * totalWeight;
+    
+    double currentWeight = 0;
+    for (final entry in weights.entries) {
+      currentWeight += entry.value;
+      if (randomValue <= currentWeight) {
+        return entry.key;
+      }
+    }
+    
+    return BlockType.single; // Fallback
+  }
+
+  /// Get random line length based on level
+  static int _getRandomLineLength(int level, math.Random random) {
+    if (level < 3) return random.nextBool() ? 2 : 3;
+    if (level < 6) return 2 + random.nextInt(3); // 2, 3, or 4
+    return 2 + random.nextInt(4); // 2, 3, 4, or 5
+  }
+
+  @override
+  List<Object?> get props => [
+        id,
+        shape,
+        colorId,
+        type,
+        rotation,
+        canRotate,
+        rarity,
+        createdAt,
+      ];
+
+  @override
+  String toString() {
+    return 'Block(id: $id, type: $type, color: $colorId, size: ${width}x$height)';
+  }
+}
+
+/// Block type enumeration
+enum BlockType {
+  single,
+  line,
+  square,
+  lShape,
+  jShape,
+  tShape,
+  sShape,
+  zShape,
+  custom;
+  
+  String get name => toString().split('.').last;
+  
+  String get displayName {
+    switch (this) {
+      case BlockType.single:
+        return 'Single';
+      case BlockType.line:
+        return 'Line';
+      case BlockType.square:
+        return 'Square';
+      case BlockType.lShape:
+        return 'L-Shape';
+      case BlockType.jShape:
+        return 'J-Shape';
+      case BlockType.tShape:
+        return 'T-Shape';
+      case BlockType.sShape:
+        return 'S-Shape';
+      case BlockType.zShape:
+        return 'Z-Shape';
+      case BlockType.custom:
+        return 'Custom';
+    }
+  }
+}
+
+/// Block rarity enumeration (affects spawning probability)
+enum BlockRarity {
+  common,
+  uncommon,
+  rare,
+  epic;
+  
+  String get name => toString().split('.').last;
+  
+  double get spawnProbability {
+    switch (this) {
+      case BlockRarity.common:
+        return 0.6;
+      case BlockRarity.uncommon:
+        return 0.3;
+      case BlockRarity.rare:
+        return 0.08;
+      case BlockRarity.epic:
+        return 0.02;
+    }
   }
 }

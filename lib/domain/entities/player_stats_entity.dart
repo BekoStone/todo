@@ -1,322 +1,793 @@
 import 'package:equatable/equatable.dart';
+import '../../core/constants/app_constants.dart';
 
+/// PlayerStats entity represents comprehensive player statistics and progression.
+/// Contains all persistent data for a player's progress, achievements, and settings.
+/// Immutable entity following Clean Architecture principles.
 class PlayerStats extends Equatable {
+  /// Unique player identifier
   final String playerId;
-  final int totalScore;
-  final int bestScore;
-  final int totalGamesPlayed;
-  final Duration totalTimePlayed;
-  final int totalBlocksPlaced;
-  final int totalLinesCleared;
-  final int currentCoins;
-  final int totalCoinsEarned;
-  final int bestCombo;
-  final int bestStreak;
-  final int perfectClears;
-  final Map<String, int> powerUpInventory;
-  final Set<String> unlockedAchievements;
-  final List<int> recentScores;
-  final DateTime firstPlayDate;
-  final DateTime lastPlayDate;
-  final Map<String, dynamic> settings;
   
+  /// Player creation date
+  final DateTime createdAt;
+  
+  /// Last time player data was updated
+  final DateTime lastUpdated;
+  
+  /// Last login date for daily bonus tracking
+  final DateTime? lastLoginDate;
+  
+  /// Last game played date
+  final DateTime? lastGameDate;
+
+  // ========================================
+  // CORE STATISTICS
+  // ========================================
+  
+  /// Total games played
+  final int totalGamesPlayed;
+  
+  /// Total games completed successfully
+  final int totalGamesCompleted;
+  
+  /// Player's highest score
+  final int highScore;
+  
+  /// Total cumulative score across all games
+  final int totalScore;
+  
+  /// Average score per game
+  final double averageScore;
+  
+  /// Total lines cleared across all games
+  final int totalLinesCleared;
+  
+  /// Total blocks placed across all games
+  final int totalBlocksPlaced;
+  
+  /// Total play time
+  final Duration totalPlayTime;
+
+  // ========================================
+  // PROGRESSION
+  // ========================================
+  
+  /// Current player level
+  final int currentLevel;
+  
+  /// Experience points for level progression
+  final int experiencePoints;
+  
+  /// Highest level reached
+  final int highestLevel;
+  
+  /// Per-level statistics
+  final Map<int, LevelStats> levelStats;
+
+  // ========================================
+  // ECONOMY
+  // ========================================
+  
+  /// Current coin balance
+  final int totalCoins;
+  
+  /// Total coins earned (lifetime)
+  final int totalCoinsEarned;
+  
+  /// Total coins spent (lifetime)
+  final int totalCoinsSpent;
+  
+  /// Premium currency balance
+  final int premiumCurrency;
+
+  // ========================================
+  // ACHIEVEMENTS & STREAKS
+  // ========================================
+  
+  /// Total achievements unlocked
+  final int totalAchievementsUnlocked;
+  
+  /// Best combo streak achieved
+  final int bestStreak;
+  
+  /// Best combo multiplier achieved
+  final int bestCombo;
+  
+  /// Total perfect clears achieved
+  final int totalPerfectClears;
+  
+  /// Consecutive login days
+  final int consecutiveLoginDays;
+  
+  /// Total login days (lifetime)
+  final int totalLoginDays;
+
+  // ========================================
+  // PREFERENCES & SETTINGS
+  // ========================================
+  
+  /// Whether player has premium features
+  final bool hasPremium;
+  
+  /// Player's preferred difficulty
+  final String preferredDifficulty;
+  
+  /// Tutorial completion status
+  final bool tutorialCompleted;
+  
+  /// Player preferences
+  final Map<String, dynamic> preferences;
+
+  // ========================================
+  // SESSION TRACKING
+  // ========================================
+  
+  /// Statistics for current session
+  final SessionTracker sessionTracker;
+  
+  /// Recent performance data
+  final List<GamePerformanceData> recentPerformance;
+
   const PlayerStats({
     required this.playerId,
-    this.totalScore = 0,
-    this.bestScore = 0,
+    required this.createdAt,
+    required this.lastUpdated,
+    this.lastLoginDate,
+    this.lastGameDate,
+    
+    // Core statistics
     this.totalGamesPlayed = 0,
-    this.totalTimePlayed = Duration.zero,
-    this.totalBlocksPlaced = 0,
+    this.totalGamesCompleted = 0,
+    this.highScore = 0,
+    this.totalScore = 0,
+    this.averageScore = 0.0,
     this.totalLinesCleared = 0,
-    this.currentCoins = 100,
-    this.totalCoinsEarned = 100,
-    this.bestCombo = 0,
+    this.totalBlocksPlaced = 0,
+    this.totalPlayTime = Duration.zero,
+    
+    // Progression
+    this.currentLevel = 1,
+    this.experiencePoints = 0,
+    this.highestLevel = 1,
+    this.levelStats = const {},
+    
+    // Economy
+    this.totalCoins = AppConstants.startingCoins,
+    this.totalCoinsEarned = 0,
+    this.totalCoinsSpent = 0,
+    this.premiumCurrency = 0,
+    
+    // Achievements & streaks
+    this.totalAchievementsUnlocked = 0,
     this.bestStreak = 0,
-    this.perfectClears = 0,
-    this.powerUpInventory = const {},
-    this.unlockedAchievements = const {},
-    this.recentScores = const [],
-    required this.firstPlayDate,
-    required this.lastPlayDate,
-    this.settings = const {},
+    this.bestCombo = 0,
+    this.totalPerfectClears = 0,
+    this.consecutiveLoginDays = 0,
+    this.totalLoginDays = 0,
+    
+    // Preferences
+    this.hasPremium = false,
+    this.preferredDifficulty = 'normal',
+    this.tutorialCompleted = false,
+    this.preferences = const {},
+    
+    // Session tracking
+    required this.sessionTracker,
+    this.recentPerformance = const [],
   });
-  
-  // Create new player
-  factory PlayerStats.newPlayer(String playerId) {
+
+  /// Create default player stats for new players
+  factory PlayerStats.createDefault({String? playerId}) {
     final now = DateTime.now();
+    final id = playerId ?? _generatePlayerId();
+    
     return PlayerStats(
-      playerId: playerId,
-      firstPlayDate: now,
-      lastPlayDate: now,
-      powerUpInventory: {
-        'shuffle': 2,
-        'undo': 3,
-        'hint': 1,
-      },
-      settings: {
+      playerId: id,
+      createdAt: now,
+      lastUpdated: now,
+      sessionTracker: SessionTracker.initial(),
+      preferences: {
+        'soundEnabled': true,
         'musicEnabled': true,
-        'sfxEnabled': true,
-        'musicVolume': 0.5,
-        'sfxVolume': 0.7,
+        'hapticsEnabled': true,
+        'theme': 'dark',
+        'autoSave': true,
       },
     );
   }
-  
-  // Copy with modifications
+
+  /// Create a copy with updated values
   PlayerStats copyWith({
     String? playerId,
-    int? totalScore,
-    int? bestScore,
+    DateTime? createdAt,
+    DateTime? lastUpdated,
+    DateTime? lastLoginDate,
+    DateTime? lastGameDate,
+    
+    // Core statistics
     int? totalGamesPlayed,
-    Duration? totalTimePlayed,
-    int? totalBlocksPlaced,
+    int? totalGamesCompleted,
+    int? highScore,
+    int? totalScore,
+    double? averageScore,
     int? totalLinesCleared,
-    int? currentCoins,
+    int? totalBlocksPlaced,
+    Duration? totalPlayTime,
+    
+    // Progression
+    int? currentLevel,
+    int? experiencePoints,
+    int? highestLevel,
+    Map<int, LevelStats>? levelStats,
+    
+    // Economy
+    int? totalCoins,
     int? totalCoinsEarned,
-    int? bestCombo,
+    int? totalCoinsSpent,
+    int? premiumCurrency,
+    
+    // Achievements
+    int? totalAchievementsUnlocked,
     int? bestStreak,
-    int? perfectClears,
-    Map<String, int>? powerUpInventory,
-    Set<String>? unlockedAchievements,
-    List<int>? recentScores,
-    DateTime? firstPlayDate,
-    DateTime? lastPlayDate,
-    Map<String, dynamic>? settings,
+    int? bestCombo,
+    int? totalPerfectClears,
+    int? consecutiveLoginDays,
+    int? totalLoginDays,
+    
+    // Preferences
+    bool? hasPremium,
+    String? preferredDifficulty,
+    bool? tutorialCompleted,
+    Map<String, dynamic>? preferences,
+    
+    // Session tracking
+    SessionTracker? sessionTracker,
+    List<GamePerformanceData>? recentPerformance,
   }) {
     return PlayerStats(
       playerId: playerId ?? this.playerId,
-      totalScore: totalScore ?? this.totalScore,
-      bestScore: bestScore ?? this.bestScore,
+      createdAt: createdAt ?? this.createdAt,
+      lastUpdated: lastUpdated ?? DateTime.now(),
+      lastLoginDate: lastLoginDate ?? this.lastLoginDate,
+      lastGameDate: lastGameDate ?? this.lastGameDate,
+      
+      // Core statistics
       totalGamesPlayed: totalGamesPlayed ?? this.totalGamesPlayed,
-      totalTimePlayed: totalTimePlayed ?? this.totalTimePlayed,
-      totalBlocksPlaced: totalBlocksPlaced ?? this.totalBlocksPlaced,
+      totalGamesCompleted: totalGamesCompleted ?? this.totalGamesCompleted,
+      highScore: highScore ?? this.highScore,
+      totalScore: totalScore ?? this.totalScore,
+      averageScore: averageScore ?? this.averageScore,
       totalLinesCleared: totalLinesCleared ?? this.totalLinesCleared,
-      currentCoins: currentCoins ?? this.currentCoins,
+      totalBlocksPlaced: totalBlocksPlaced ?? this.totalBlocksPlaced,
+      totalPlayTime: totalPlayTime ?? this.totalPlayTime,
+      
+      // Progression
+      currentLevel: currentLevel ?? this.currentLevel,
+      experiencePoints: experiencePoints ?? this.experiencePoints,
+      highestLevel: highestLevel ?? this.highestLevel,
+      levelStats: levelStats ?? this.levelStats,
+      
+      // Economy
+      totalCoins: totalCoins ?? this.totalCoins,
       totalCoinsEarned: totalCoinsEarned ?? this.totalCoinsEarned,
-      bestCombo: bestCombo ?? this.bestCombo,
+      totalCoinsSpent: totalCoinsSpent ?? this.totalCoinsSpent,
+      premiumCurrency: premiumCurrency ?? this.premiumCurrency,
+      
+      // Achievements
+      totalAchievementsUnlocked: totalAchievementsUnlocked ?? this.totalAchievementsUnlocked,
       bestStreak: bestStreak ?? this.bestStreak,
-      perfectClears: perfectClears ?? this.perfectClears,
-      powerUpInventory: powerUpInventory ?? this.powerUpInventory,
-      unlockedAchievements: unlockedAchievements ?? this.unlockedAchievements,
-      recentScores: recentScores ?? this.recentScores,
-      firstPlayDate: firstPlayDate ?? this.firstPlayDate,
-      lastPlayDate: lastPlayDate ?? this.lastPlayDate,
-      settings: settings ?? this.settings,
+      bestCombo: bestCombo ?? this.bestCombo,
+      totalPerfectClears: totalPerfectClears ?? this.totalPerfectClears,
+      consecutiveLoginDays: consecutiveLoginDays ?? this.consecutiveLoginDays,
+      totalLoginDays: totalLoginDays ?? this.totalLoginDays,
+      
+      // Preferences
+      hasPremium: hasPremium ?? this.hasPremium,
+      preferredDifficulty: preferredDifficulty ?? this.preferredDifficulty,
+      tutorialCompleted: tutorialCompleted ?? this.tutorialCompleted,
+      preferences: preferences ?? this.preferences,
+      
+      // Session tracking
+      sessionTracker: sessionTracker ?? this.sessionTracker,
+      recentPerformance: recentPerformance ?? this.recentPerformance,
     );
   }
-  
-  // Game session updates
-  PlayerStats afterGameSession({
-    required int gameScore,
-    required int blocksPlaced,
-    required int linesCleared,
-    required int maxCombo,
-    required int maxStreak,
-    required Duration sessionTime,
-    required int coinsEarned,
-    bool hadPerfectClear = false,
-  }) {
-    final updatedRecentScores = [gameScore, ...recentScores].take(10).toList();
-    
-    return copyWith(
-      totalScore: totalScore + gameScore,
-      bestScore: gameScore > bestScore ? gameScore : bestScore,
-      totalGamesPlayed: totalGamesPlayed + 1,
-      totalTimePlayed: totalTimePlayed + sessionTime,
-      totalBlocksPlaced: totalBlocksPlaced + blocksPlaced,
-      totalLinesCleared: totalLinesCleared + linesCleared,
-      currentCoins: currentCoins + coinsEarned,
-      totalCoinsEarned: totalCoinsEarned + coinsEarned,
-      bestCombo: maxCombo > bestCombo ? maxCombo : bestCombo,
-      bestStreak: maxStreak > bestStreak ? maxStreak : bestStreak,
-      perfectClears: hadPerfectClear ? perfectClears + 1 : perfectClears,
-      recentScores: updatedRecentScores,
-      lastPlayDate: DateTime.now(),
-    );
-  }
-  
-  // Power-up operations
-  PlayerStats usePowerUp(String powerUpType) {
-    final currentInventory = Map<String, int>.from(powerUpInventory);
-    final currentCount = currentInventory[powerUpType] ?? 0;
-    
-    if (currentCount > 0) {
-      currentInventory[powerUpType] = currentCount - 1;
-      return copyWith(powerUpInventory: currentInventory);
-    }
-    
-    return this;
-  }
-  
-  PlayerStats addPowerUp(String powerUpType, int count) {
-    final currentInventory = Map<String, int>.from(powerUpInventory);
-    currentInventory[powerUpType] = (currentInventory[powerUpType] ?? 0) + count;
-    return copyWith(powerUpInventory: currentInventory);
-  }
-  
-  bool hasPowerUp(String powerUpType) {
-    return (powerUpInventory[powerUpType] ?? 0) > 0;
-  }
-  
-  int getPowerUpCount(String powerUpType) {
-    return powerUpInventory[powerUpType] ?? 0;
-  }
-  
-  // Coin operations
-  PlayerStats spendCoins(int amount) {
-    if (currentCoins >= amount) {
-      return copyWith(currentCoins: currentCoins - amount);
-    }
-    return this;
-  }
-  
-  PlayerStats addCoins(int amount) {
-    return copyWith(
-      currentCoins: currentCoins + amount,
-      totalCoinsEarned: totalCoinsEarned + amount,
-    );
-  }
-  
-  bool canAfford(int amount) => currentCoins >= amount;
-  
-  // Achievement operations
-  PlayerStats unlockAchievement(String achievementId) {
-    final updatedAchievements = Set<String>.from(unlockedAchievements);
-    updatedAchievements.add(achievementId);
-    return copyWith(unlockedAchievements: updatedAchievements);
-  }
-  
-  bool hasAchievement(String achievementId) {
-    return unlockedAchievements.contains(achievementId);
-  }
-  
-  // Settings operations
-  PlayerStats updateSetting(String key, dynamic value) {
-    final updatedSettings = Map<String, dynamic>.from(settings);
-    updatedSettings[key] = value;
-    return copyWith(settings: updatedSettings);
-  }
-  
-  T? getSetting<T>(String key, [T? defaultValue]) {
-    return settings[key] as T? ?? defaultValue;
-  }
-  
-  // Statistics calculations
-  double get averageScore {
-    return totalGamesPlayed > 0 ? totalScore / totalGamesPlayed : 0;
-  }
-  
-  double get averageGameTime {
+
+  // ========================================
+  // COMPUTED PROPERTIES
+  // ========================================
+
+  /// Get win rate percentage
+  double get winRate {
     return totalGamesPlayed > 0 
-        ? totalTimePlayed.inSeconds / totalGamesPlayed 
-        : 0;
+        ? (totalGamesCompleted / totalGamesPlayed) * 100 
+        : 0.0;
   }
-  
-  double get blocksPerGame {
-    return totalGamesPlayed > 0 ? totalBlocksPlaced / totalGamesPlayed : 0;
+
+  /// Get average play time per game
+  Duration get averagePlayTime {
+    return totalGamesPlayed > 0 
+        ? Duration(milliseconds: totalPlayTime.inMilliseconds ~/ totalGamesPlayed)
+        : Duration.zero;
   }
-  
-  double get linesPerGame {
-    return totalGamesPlayed > 0 ? totalLinesCleared / totalGamesPlayed : 0;
-  }
-  
+
+  /// Get efficiency rating (lines per block)
   double get efficiency {
-    return totalBlocksPlaced > 0 ? totalLinesCleared / totalBlocksPlaced : 0;
+    return totalBlocksPlaced > 0 
+        ? totalLinesCleared / totalBlocksPlaced 
+        : 0.0;
   }
-  
-  int get playDays => DateTime.now().difference(firstPlayDate).inDays + 1;
-  
-  double get gamesPerDay => playDays > 0 ? totalGamesPlayed / playDays : 0;
-  
-  // Performance ratings
-  String get skillLevel {
-    if (averageScore >= 5000) return 'Master';
-    if (averageScore >= 3000) return 'Expert';
-    if (averageScore >= 1500) return 'Advanced';
-    if (averageScore >= 500) return 'Intermediate';
-    return 'Beginner';
+
+  /// Get current player rank based on total score
+  PlayerRank get playerRank {
+    if (totalScore < 10000) return PlayerRank.bronze;
+    if (totalScore < 50000) return PlayerRank.silver;
+    if (totalScore < 150000) return PlayerRank.gold;
+    if (totalScore < 500000) return PlayerRank.platinum;
+    return PlayerRank.diamond;
   }
-  
-  int get experienceLevel => (totalScore / 10000).floor() + 1;
-  
-  double get experienceProgress {
-    final currentLevelScore = (experienceLevel - 1) * 10000;
-    final nextLevelScore = experienceLevel * 10000;
-    final progressScore = totalScore - currentLevelScore;
-    return progressScore / (nextLevelScore - currentLevelScore);
+
+  /// Get experience points needed for next level
+  int get experienceToNextLevel {
+    final nextLevelXP = _getXPRequiredForLevel(currentLevel + 1);
+    return nextLevelXP - experiencePoints;
   }
-  
-  // Streaks and consistency
-  bool get isOnStreak => recentScores.length >= 3 && 
-      recentScores.take(3).every((score) => score > averageScore * 0.8);
-  
-  bool get isImproving => recentScores.length >= 5 &&
-      recentScores.take(3).reduce((a, b) => a + b) >
-      recentScores.skip(2).take(3).reduce((a, b) => a + b);
-  
-  // Daily reward eligibility
-  bool get canClaimDailyReward {
-    final now = DateTime.now();
-    final daysSinceLastPlay = now.difference(lastPlayDate).inDays;
-    return daysSinceLastPlay >= 1;
+
+  /// Get progress to next level (0.0 to 1.0)
+  double get levelProgress {
+    final currentLevelXP = _getXPRequiredForLevel(currentLevel);
+    final nextLevelXP = _getXPRequiredForLevel(currentLevel + 1);
+    final totalXPForLevel = nextLevelXP - currentLevelXP;
+    final currentProgress = experiencePoints - currentLevelXP;
+    
+    return totalXPForLevel > 0 
+        ? (currentProgress / totalXPForLevel).clamp(0.0, 1.0)
+        : 0.0;
   }
-  
-  // Achievement progress helpers
-  double getAchievementProgress(String achievementId, int targetValue) {
-    switch (achievementId) {
-      case 'total_score':
-        return (totalScore / targetValue).clamp(0.0, 1.0);
-      case 'games_played':
-        return (totalGamesPlayed / targetValue).clamp(0.0, 1.0);
-      case 'blocks_placed':
-        return (totalBlocksPlaced / targetValue).clamp(0.0, 1.0);
-      case 'lines_cleared':
-        return (totalLinesCleared / targetValue).clamp(0.0, 1.0);
-      case 'best_combo':
-        return (bestCombo / targetValue).clamp(0.0, 1.0);
-      case 'perfect_clears':
-        return (perfectClears / targetValue).clamp(0.0, 1.0);
-      default:
-        return 0.0;
+
+  /// Get net coin balance (earned - spent)
+  int get netCoinBalance {
+    return totalCoinsEarned - totalCoinsSpent;
+  }
+
+  /// Get days since account creation
+  int get daysSinceCreation {
+    return DateTime.now().difference(createdAt).inDays;
+  }
+
+  /// Get days since last game
+  int get daysSinceLastGame {
+    return lastGameDate != null 
+        ? DateTime.now().difference(lastGameDate!).inDays
+        : daysSinceCreation;
+  }
+
+  /// Check if player is active (played recently)
+  bool get isActivePlayer {
+    return daysSinceLastGame <= 7; // Active if played within a week
+  }
+
+  /// Get formatted total play time
+  String get formattedPlayTime {
+    final hours = totalPlayTime.inHours;
+    final minutes = totalPlayTime.inMinutes % 60;
+    
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    } else {
+      return '${minutes}m';
     }
   }
-  
-  // Summary data for UI
-  Map<String, dynamic> getSummaryData() {
+
+  /// Get completion rate for achievements
+  double get achievementCompletionRate {
+    const totalAchievements = 50; // Would come from achievement system
+    return (totalAchievementsUnlocked / totalAchievements) * 100;
+  }
+
+  // ========================================
+  // SERIALIZATION
+  // ========================================
+
+  /// Convert to JSON for persistence
+  Map<String, dynamic> toJson() {
     return {
-      'skillLevel': skillLevel,
-      'experienceLevel': experienceLevel,
-      'experienceProgress': experienceProgress,
-      'totalPlayTime': totalTimePlayed.inHours,
-      'averageScore': averageScore.round(),
-      'efficiency': (efficiency * 100).round(),
-      'achievementCount': unlockedAchievements.length,
-      'isOnStreak': isOnStreak,
-      'isImproving': isImproving,
-      'playDays': playDays,
-      'gamesPerDay': gamesPerDay.toStringAsFixed(1),
+      'playerId': playerId,
+      'createdAt': createdAt.toIso8601String(),
+      'lastUpdated': lastUpdated.toIso8601String(),
+      'lastLoginDate': lastLoginDate?.toIso8601String(),
+      'lastGameDate': lastGameDate?.toIso8601String(),
+      
+      // Core statistics
+      'totalGamesPlayed': totalGamesPlayed,
+      'totalGamesCompleted': totalGamesCompleted,
+      'highScore': highScore,
+      'totalScore': totalScore,
+      'averageScore': averageScore,
+      'totalLinesCleared': totalLinesCleared,
+      'totalBlocksPlaced': totalBlocksPlaced,
+      'totalPlayTime': totalPlayTime.inMilliseconds,
+      
+      // Progression
+      'currentLevel': currentLevel,
+      'experiencePoints': experiencePoints,
+      'highestLevel': highestLevel,
+      'levelStats': levelStats.map((k, v) => MapEntry(k.toString(), v.toJson())),
+      
+      // Economy
+      'totalCoins': totalCoins,
+      'totalCoinsEarned': totalCoinsEarned,
+      'totalCoinsSpent': totalCoinsSpent,
+      'premiumCurrency': premiumCurrency,
+      
+      // Achievements
+      'totalAchievementsUnlocked': totalAchievementsUnlocked,
+      'bestStreak': bestStreak,
+      'bestCombo': bestCombo,
+      'totalPerfectClears': totalPerfectClears,
+      'consecutiveLoginDays': consecutiveLoginDays,
+      'totalLoginDays': totalLoginDays,
+      
+      // Preferences
+      'hasPremium': hasPremium,
+      'preferredDifficulty': preferredDifficulty,
+      'tutorialCompleted': tutorialCompleted,
+      'preferences': preferences,
+      
+      // Session tracking
+      'sessionTracker': sessionTracker.toJson(),
+      'recentPerformance': recentPerformance.map((p) => p.toJson()).toList(),
     };
   }
-  
+
+  /// Create from JSON
+  factory PlayerStats.fromJson(Map<String, dynamic> json) {
+    return PlayerStats(
+      playerId: json['playerId'] as String,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      lastUpdated: DateTime.parse(json['lastUpdated'] as String),
+      lastLoginDate: json['lastLoginDate'] != null
+          ? DateTime.parse(json['lastLoginDate'] as String)
+          : null,
+      lastGameDate: json['lastGameDate'] != null
+          ? DateTime.parse(json['lastGameDate'] as String)
+          : null,
+      
+      // Core statistics
+      totalGamesPlayed: json['totalGamesPlayed'] as int? ?? 0,
+      totalGamesCompleted: json['totalGamesCompleted'] as int? ?? 0,
+      highScore: json['highScore'] as int? ?? 0,
+      totalScore: json['totalScore'] as int? ?? 0,
+      averageScore: (json['averageScore'] as num?)?.toDouble() ?? 0.0,
+      totalLinesCleared: json['totalLinesCleared'] as int? ?? 0,
+      totalBlocksPlaced: json['totalBlocksPlaced'] as int? ?? 0,
+      totalPlayTime: Duration(milliseconds: json['totalPlayTime'] as int? ?? 0),
+      
+      // Progression
+      currentLevel: json['currentLevel'] as int? ?? 1,
+      experiencePoints: json['experiencePoints'] as int? ?? 0,
+      highestLevel: json['highestLevel'] as int? ?? 1,
+      levelStats: (json['levelStats'] as Map<String, dynamic>?)?.map(
+        (k, v) => MapEntry(int.parse(k), LevelStats.fromJson(v)),
+      ) ?? {},
+      
+      // Economy
+      totalCoins: json['totalCoins'] as int? ?? AppConstants.startingCoins,
+      totalCoinsEarned: json['totalCoinsEarned'] as int? ?? 0,
+      totalCoinsSpent: json['totalCoinsSpent'] as int? ?? 0,
+      premiumCurrency: json['premiumCurrency'] as int? ?? 0,
+      
+      // Achievements
+      totalAchievementsUnlocked: json['totalAchievementsUnlocked'] as int? ?? 0,
+      bestStreak: json['bestStreak'] as int? ?? 0,
+      bestCombo: json['bestCombo'] as int? ?? 0,
+      totalPerfectClears: json['totalPerfectClears'] as int? ?? 0,
+      consecutiveLoginDays: json['consecutiveLoginDays'] as int? ?? 0,
+      totalLoginDays: json['totalLoginDays'] as int? ?? 0,
+      
+      // Preferences
+      hasPremium: json['hasPremium'] as bool? ?? false,
+      preferredDifficulty: json['preferredDifficulty'] as String? ?? 'normal',
+      tutorialCompleted: json['tutorialCompleted'] as bool? ?? false,
+      preferences: Map<String, dynamic>.from(json['preferences'] ?? {}),
+      
+      // Session tracking
+      sessionTracker: SessionTracker.fromJson(json['sessionTracker']),
+      recentPerformance: (json['recentPerformance'] as List?)
+          ?.map((p) => GamePerformanceData.fromJson(p))
+          .toList() ?? [],
+    );
+  }
+
+  // ========================================
+  // HELPER METHODS
+  // ========================================
+
+  /// Calculate XP required for a given level
+  int _getXPRequiredForLevel(int level) {
+    // Exponential growth: level^2 * 100
+    return level * level * 100;
+  }
+
+  /// Generate a unique player ID
+  static String _generatePlayerId() {
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    return 'player_${timestamp}_${timestamp.hashCode.abs()}';
+  }
+
   @override
   List<Object?> get props => [
-    playerId,
-    totalScore,
-    bestScore,
-    totalGamesPlayed,
-    totalTimePlayed,
-    totalBlocksPlaced,
-    totalLinesCleared,
-    currentCoins,
-    totalCoinsEarned,
-    bestCombo,
-    bestStreak,
-    perfectClears,
-    powerUpInventory,
-    unlockedAchievements,
-    recentScores,
-    firstPlayDate,
-    lastPlayDate,
-    settings,
-  ];
+        playerId,
+        createdAt,
+        lastUpdated,
+        lastLoginDate,
+        lastGameDate,
+        totalGamesPlayed,
+        totalGamesCompleted,
+        highScore,
+        totalScore,
+        averageScore,
+        totalLinesCleared,
+        totalBlocksPlaced,
+        totalPlayTime,
+        currentLevel,
+        experiencePoints,
+        highestLevel,
+        levelStats,
+        totalCoins,
+        totalCoinsEarned,
+        totalCoinsSpent,
+        premiumCurrency,
+        totalAchievementsUnlocked,
+        bestStreak,
+        bestCombo,
+        totalPerfectClears,
+        consecutiveLoginDays,
+        totalLoginDays,
+        hasPremium,
+        preferredDifficulty,
+        tutorialCompleted,
+        preferences,
+        sessionTracker,
+        recentPerformance,
+      ];
+
+  @override
+  String toString() {
+    return 'PlayerStats('
+        'id: $playerId, '
+        'level: $currentLevel, '
+        'score: $totalScore, '
+        'games: $totalGamesPlayed'
+        ')';
+  }
+}
+
+/// Session tracker for current session data
+class SessionTracker extends Equatable {
+  final DateTime sessionStart;
+  final int gamesThisSession;
+  final int scoreThisSession;
+  final Duration playTimeThisSession;
+
+  const SessionTracker({
+    required this.sessionStart,
+    this.gamesThisSession = 0,
+    this.scoreThisSession = 0,
+    this.playTimeThisSession = Duration.zero,
+  });
+
+  factory SessionTracker.initial() {
+    return SessionTracker(sessionStart: DateTime.now());
+  }
+
+  SessionTracker copyWith({
+    DateTime? sessionStart,
+    int? gamesThisSession,
+    int? scoreThisSession,
+    Duration? playTimeThisSession,
+  }) {
+    return SessionTracker(
+      sessionStart: sessionStart ?? this.sessionStart,
+      gamesThisSession: gamesThisSession ?? this.gamesThisSession,
+      scoreThisSession: scoreThisSession ?? this.scoreThisSession,
+      playTimeThisSession: playTimeThisSession ?? this.playTimeThisSession,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'sessionStart': sessionStart.toIso8601String(),
+      'gamesThisSession': gamesThisSession,
+      'scoreThisSession': scoreThisSession,
+      'playTimeThisSession': playTimeThisSession.inMilliseconds,
+    };
+  }
+
+  factory SessionTracker.fromJson(Map<String, dynamic> json) {
+    return SessionTracker(
+      sessionStart: DateTime.parse(json['sessionStart'] as String),
+      gamesThisSession: json['gamesThisSession'] as int? ?? 0,
+      scoreThisSession: json['scoreThisSession'] as int? ?? 0,
+      playTimeThisSession: Duration(
+        milliseconds: json['playTimeThisSession'] as int? ?? 0,
+      ),
+    );
+  }
+
+  @override
+  List<Object> get props => [
+        sessionStart,
+        gamesThisSession,
+        scoreThisSession,
+        playTimeThisSession,
+      ];
+}
+
+/// Game performance data for tracking recent games
+class GamePerformanceData extends Equatable {
+  final DateTime gameDate;
+  final int score;
+  final int level;
+  final int linesCleared;
+  final Duration playTime;
+  final double efficiency;
+
+  const GamePerformanceData({
+    required this.gameDate,
+    required this.score,
+    required this.level,
+    required this.linesCleared,
+    required this.playTime,
+    required this.efficiency,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'gameDate': gameDate.toIso8601String(),
+      'score': score,
+      'level': level,
+      'linesCleared': linesCleared,
+      'playTime': playTime.inMilliseconds,
+      'efficiency': efficiency,
+    };
+  }
+
+  factory GamePerformanceData.fromJson(Map<String, dynamic> json) {
+    return GamePerformanceData(
+      gameDate: DateTime.parse(json['gameDate'] as String),
+      score: json['score'] as int,
+      level: json['level'] as int,
+      linesCleared: json['linesCleared'] as int,
+      playTime: Duration(milliseconds: json['playTime'] as int),
+      efficiency: (json['efficiency'] as num).toDouble(),
+    );
+  }
+
+  @override
+  List<Object> get props => [
+        gameDate,
+        score,
+        level,
+        linesCleared,
+        playTime,
+        efficiency,
+      ];
+}
+
+/// Player rank enumeration
+enum PlayerRank {
+  bronze,
+  silver,
+  gold,
+  platinum,
+  diamond;
+
+  String get displayName {
+    switch (this) {
+      case PlayerRank.bronze:
+        return 'Bronze';
+      case PlayerRank.silver:
+        return 'Silver';
+      case PlayerRank.gold:
+        return 'Gold';
+      case PlayerRank.platinum:
+        return 'Platinum';
+      case PlayerRank.diamond:
+        return 'Diamond';
+    }
+  }
+
+  int get minScore {
+    switch (this) {
+      case PlayerRank.bronze:
+        return 0;
+      case PlayerRank.silver:
+        return 10000;
+      case PlayerRank.gold:
+        return 50000;
+      case PlayerRank.platinum:
+        return 150000;
+      case PlayerRank.diamond:
+        return 500000;
+    }
+  }
+}
+
+/// Level statistics (reused from player_state.dart for consistency)
+class LevelStats extends Equatable {
+  final int level;
+  final int timesCompleted;
+  final int bestScore;
+  final Duration bestTime;
+  final DateTime? lastCompletedDate;
+  final DateTime firstCompletedDate;
+
+  const LevelStats({
+    required this.level,
+    this.timesCompleted = 0,
+    this.bestScore = 0,
+    this.bestTime = Duration.zero,
+    this.lastCompletedDate,
+    required this.firstCompletedDate,
+  });
+
+  factory LevelStats.initial(int level) {
+    return LevelStats(
+      level: level,
+      firstCompletedDate: DateTime.now(),
+    );
+  }
+
+  LevelStats copyWith({
+    int? level,
+    int? timesCompleted,
+    int? bestScore,
+    Duration? bestTime,
+    DateTime? lastCompletedDate,
+    DateTime? firstCompletedDate,
+  }) {
+    return LevelStats(
+      level: level ?? this.level,
+      timesCompleted: timesCompleted ?? this.timesCompleted,
+      bestScore: bestScore ?? this.bestScore,
+      bestTime: bestTime ?? this.bestTime,
+      lastCompletedDate: lastCompletedDate ?? this.lastCompletedDate,
+      firstCompletedDate: firstCompletedDate ?? this.firstCompletedDate,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'level': level,
+      'timesCompleted': timesCompleted,
+      'bestScore': bestScore,
+      'bestTime': bestTime.inMilliseconds,
+      'lastCompletedDate': lastCompletedDate?.toIso8601String(),
+      'firstCompletedDate': firstCompletedDate.toIso8601String(),
+    };
+  }
+
+  factory LevelStats.fromJson(Map<String, dynamic> json) {
+    return LevelStats(
+      level: json['level'] as int,
+      timesCompleted: json['timesCompleted'] as int? ?? 0,
+      bestScore: json['bestScore'] as int? ?? 0,
+      bestTime: Duration(milliseconds: json['bestTime'] as int? ?? 0),
+      lastCompletedDate: json['lastCompletedDate'] != null
+          ? DateTime.parse(json['lastCompletedDate'] as String)
+          : null,
+      firstCompletedDate: DateTime.parse(json['firstCompletedDate'] as String),
+    );
+  }
+
+  @override
+  List<Object?> get props => [
+        level,
+        timesCompleted,
+        bestScore,
+        bestTime,
+        lastCompletedDate,
+        firstCompletedDate,
+      ];
 }

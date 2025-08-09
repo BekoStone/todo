@@ -1,373 +1,578 @@
-import 'package:flutter/foundation.dart';
+import 'dart:async';
+import 'dart:developer' as developer;
 import '../../core/services/storage_service.dart';
-import '../../core/constants/app_constants.dart';
-import '../models/game_state_model.dart';
-import '../models/player_stats_model.dart';
-import '../models/achievement_model.dart';
+import '../../domain/entities/player_stats_entity.dart';
+import '../../domain/entities/game_session_entity.dart';
+import '../../domain/entities/achievement_entity.dart';
 
+
+/// LocalStorageDataSource provides data access layer for local storage operations.
+/// Acts as an interface between the domain layer and the storage service.
+/// Handles serialization/deserialization and error management for persistent data.
 class LocalStorageDataSource {
-  final StorageService _storage;
-  
-  LocalStorageDataSource(this._storage);
-  
-  // Game State Operations
-  Future<bool> saveGameState(GameStateModel gameState) async {
+  final StorageService _storageService;
+
+  LocalStorageDataSource(this._storageService);
+
+  // ========================================
+  // PLAYER STATISTICS
+  // ========================================
+
+  /// Save player statistics to local storage
+  Future<bool> savePlayerStats(PlayerStats playerStats) async {
     try {
-      final success = await _storage.setJson(
-        AppConstants.gameDataKey,
-        gameState.toJson(),
-      );
+      developer.log('Saving player stats: ${playerStats.playerId}', name: 'LocalStorageDataSource');
       
-      if (AppConstants.enableDebugLogging) {
-        debugPrint('💾 Game state saved: ${success ? "success" : "failed"}');
+      final json = playerStats.toJson();
+      final success = await _storageService.savePlayerStats(json);
+      
+      if (success) {
+        developer.log('Player stats saved successfully', name: 'LocalStorageDataSource');
+      } else {
+        developer.log('Failed to save player stats', name: 'LocalStorageDataSource');
+      }
+      
+      return success;
+    } catch (e, stackTrace) {
+      developer.log('Error saving player stats: $e', name: 'LocalStorageDataSource', stackTrace: stackTrace);
+      return false;
+    }
+  }
+
+  /// Load player statistics from local storage
+  Future<PlayerStats?> loadPlayerStats() async {
+    try {
+      developer.log('Loading player stats', name: 'LocalStorageDataSource');
+      
+      final json = await _storageService.loadPlayerStats();
+      if (json == null) {
+        developer.log('No player stats found', name: 'LocalStorageDataSource');
+        return null;
+      }
+      
+      final playerStats = PlayerStats.fromJson(json);
+      developer.log('Player stats loaded: ${playerStats.playerId}', name: 'LocalStorageDataSource');
+      
+      return playerStats;
+    } catch (e, stackTrace) {
+      developer.log('Error loading player stats: $e', name: 'LocalStorageDataSource', stackTrace: stackTrace);
+      return null;
+    }
+  }
+
+  /// Check if player statistics exist
+  Future<bool> hasPlayerStats() async {
+    try {
+      final stats = await loadPlayerStats();
+      return stats != null;
+    } catch (e) {
+      developer.log('Error checking player stats existence: $e', name: 'LocalStorageDataSource');
+      return false;
+    }
+  }
+
+  /// Delete player statistics
+  Future<bool> deletePlayerStats() async {
+    try {
+      developer.log('Deleting player stats', name: 'LocalStorageDataSource');
+      
+      final success = await _storageService.remove(_storageService.playerStatsKeyV2);
+      
+      if (success) {
+        developer.log('Player stats deleted successfully', name: 'LocalStorageDataSource');
       }
       
       return success;
     } catch (e) {
-      debugPrint('❌ Failed to save game state: $e');
+      developer.log('Error deleting player stats: $e', name: 'LocalStorageDataSource');
       return false;
     }
   }
-  
-  GameStateModel? loadGameState() {
+
+  // ========================================
+  // GAME SESSIONS
+  // ========================================
+
+  /// Save game session to local storage
+  Future<bool> saveGameSession(GameSession gameSession) async {
     try {
-      final json = _storage.getJson(AppConstants.gameDataKey);
+      developer.log('Saving game session: ${gameSession.sessionId}', name: 'LocalStorageDataSource');
+      
+      final json = gameSession.toJson();
+      final key = 'game_session_${gameSession.sessionId}';
+      final success = await _storageService.setJson(key, json);
+      
+      if (success) {
+        developer.log('Game session saved successfully', name: 'LocalStorageDataSource');
+      }
+      
+      return success;
+    } catch (e, stackTrace) {
+      developer.log('Error saving game session: $e', name: 'LocalStorageDataSource', stackTrace: stackTrace);
+      return false;
+    }
+  }
+
+  /// Load game session from local storage
+  Future<GameSession?> loadGameSession(String sessionId) async {
+    try {
+      developer.log('Loading game session: $sessionId', name: 'LocalStorageDataSource');
+      
+      final key = 'game_session_$sessionId';
+      final json = _storageService.getJson(key);
       
       if (json == null) {
-        if (AppConstants.enableDebugLogging) {
-          debugPrint('📂 No saved game state found');
-        }
+        developer.log('Game session not found: $sessionId', name: 'LocalStorageDataSource');
         return null;
       }
       
-      final gameState = GameStateModel.fromJson(json);
+      final gameSession = GameSession.fromJson(json);
+      developer.log('Game session loaded: ${gameSession.sessionId}', name: 'LocalStorageDataSource');
       
-      if (AppConstants.enableDebugLogging) {
-        debugPrint('📂 Game state loaded: Score ${gameState.score}');
+      return gameSession;
+    } catch (e, stackTrace) {
+      developer.log('Error loading game session: $e', name: 'LocalStorageDataSource', stackTrace: stackTrace);
+      return null;
+    }
+  }
+
+  /// Load all game sessions
+  Future<List<GameSession>> loadAllGameSessions() async {
+    try {
+      developer.log('Loading all game sessions', name: 'LocalStorageDataSource');
+      
+      final allKeys = _storageService.getAllKeys();
+      final sessionKeys = allKeys.where((key) => key.startsWith('game_session_')).toList();
+      
+      final sessions = <GameSession>[];
+      
+      for (final key in sessionKeys) {
+        try {
+          final json = _storageService.getJson(key);
+          if (json != null) {
+            final session = GameSession.fromJson(json);
+            sessions.add(session);
+          }
+        } catch (e) {
+          developer.log('Error parsing session from key $key: $e', name: 'LocalStorageDataSource');
+          // Continue with other sessions
+        }
+      }
+      
+      developer.log('Loaded ${sessions.length} game sessions', name: 'LocalStorageDataSource');
+      return sessions;
+    } catch (e, stackTrace) {
+      developer.log('Error loading all game sessions: $e', name: 'LocalStorageDataSource', stackTrace: stackTrace);
+      return [];
+    }
+  }
+
+  /// Delete game session
+  Future<bool> deleteGameSession(String sessionId) async {
+    try {
+      developer.log('Deleting game session: $sessionId', name: 'LocalStorageDataSource');
+      
+      final key = 'game_session_$sessionId';
+      final success = await _storageService.remove(key);
+      
+      if (success) {
+        developer.log('Game session deleted successfully', name: 'LocalStorageDataSource');
+      }
+      
+      return success;
+    } catch (e) {
+      developer.log('Error deleting game session: $e', name: 'LocalStorageDataSource');
+      return false;
+    }
+  }
+
+  /// Save current game state (for auto-save)
+  Future<bool> saveCurrentGameState(Map<String, dynamic> gameState) async {
+    try {
+      developer.log('Saving current game state', name: 'LocalStorageDataSource');
+      
+      // Add timestamp for auto-save tracking
+      gameState['autoSaveTimestamp'] = DateTime.now().toIso8601String();
+      
+      final success = await _storageService.saveGameState(gameState);
+      
+      if (success) {
+        developer.log('Current game state saved', name: 'LocalStorageDataSource');
+      }
+      
+      return success;
+    } catch (e) {
+      developer.log('Error saving current game state: $e', name: 'LocalStorageDataSource');
+      return false;
+    }
+  }
+
+  /// Load current game state (for resume)
+  Future<Map<String, dynamic>?> loadCurrentGameState() async {
+    try {
+      developer.log('Loading current game state', name: 'LocalStorageDataSource');
+      
+      final gameState = await _storageService.loadGameState();
+      
+      if (gameState != null) {
+        developer.log('Current game state loaded', name: 'LocalStorageDataSource');
+      } else {
+        developer.log('No current game state found', name: 'LocalStorageDataSource');
       }
       
       return gameState;
     } catch (e) {
-      debugPrint('❌ Failed to load game state: $e');
+      developer.log('Error loading current game state: $e', name: 'LocalStorageDataSource');
       return null;
     }
   }
-  
-  Future<bool> clearGameState() async {
+
+  // ========================================
+  // ACHIEVEMENTS
+  // ========================================
+
+  /// Save achievements to local storage
+  Future<bool> saveAchievements(List<Achievement> achievements) async {
     try {
-      final success = await _storage.remove(AppConstants.gameDataKey);
+      developer.log('Saving ${achievements.length} achievements', name: 'LocalStorageDataSource');
       
-      if (AppConstants.enableDebugLogging) {
-        debugPrint('🗑️ Game state cleared: ${success ? "success" : "failed"}');
+      final jsonList = achievements.map((achievement) => achievement.toJson()).toList();
+      final success = await _storageService.saveAchievements(jsonList);
+      
+      if (success) {
+        developer.log('Achievements saved successfully', name: 'LocalStorageDataSource');
       }
       
       return success;
-    } catch (e) {
-      debugPrint('❌ Failed to clear game state: $e');
+    } catch (e, stackTrace) {
+      developer.log('Error saving achievements: $e', name: 'LocalStorageDataSource', stackTrace: stackTrace);
       return false;
     }
   }
-  
-  // Player Stats Operations
-  Future<bool> savePlayerStats(PlayerStatsModel playerStats) async {
+
+  /// Load achievements from local storage
+  Future<List<Achievement>> loadAchievements() async {
     try {
-      final success = await _storage.setJson(
-        AppConstants.playerStatsKey,
-        playerStats.toJson(),
-      );
+      developer.log('Loading achievements', name: 'LocalStorageDataSource');
       
-      if (AppConstants.enableDebugLogging) {
-        debugPrint('💾 Player stats saved: ${success ? "success" : "failed"}');
+      final jsonList = await _storageService.loadAchievements();
+      
+      if (jsonList == null || jsonList.isEmpty) {
+        developer.log('No achievements found', name: 'LocalStorageDataSource');
+        return [];
       }
       
-      return success;
-    } catch (e) {
-      debugPrint('❌ Failed to save player stats: $e');
-      return false;
-    }
-  }
-  
-  PlayerStatsModel? loadPlayerStats() {
-    try {
-      final json = _storage.getJson(AppConstants.playerStatsKey);
-      
-      if (json == null) {
-        if (AppConstants.enableDebugLogging) {
-          debugPrint('📂 No saved player stats found, creating new player');
-        }
-        return _createNewPlayer();
-      }
-      
-      final playerStats = PlayerStatsModel.fromJson(json);
-      
-      if (AppConstants.enableDebugLogging) {
-        debugPrint('📂 Player stats loaded: ${playerStats.playerId}');
-      }
-      
-      return playerStats;
-    } catch (e) {
-      debugPrint('❌ Failed to load player stats: $e');
-      return _createNewPlayer();
-    }
-  }
-  
-  PlayerStatsModel _createNewPlayer() {
-    final playerId = 'player_${DateTime.now().millisecondsSinceEpoch}';
-    return PlayerStatsModel.newPlayer(playerId);
-  }
-  
-  // Achievements Operations
-  Future<bool> saveAchievements(List<AchievementModel> achievements) async {
-    try {
-      final achievementsJson = achievements.map((a) => a.toJson()).toList();
-      final success = await _storage.setJson(
-        AppConstants.achievementsKey,
-        {'achievements': achievementsJson},
-      );
-      
-      if (AppConstants.enableDebugLogging) {
-        debugPrint('💾 Achievements saved: ${success ? "success" : "failed"}');
-      }
-      
-      return success;
-    } catch (e) {
-      debugPrint('❌ Failed to save achievements: $e');
-      return false;
-    }
-  }
-  
-  List<AchievementModel> loadAchievements() {
-    try {
-      final json = _storage.getJson(AppConstants.achievementsKey);
-      
-      if (json == null || json['achievements'] == null) {
-        if (AppConstants.enableDebugLogging) {
-          debugPrint('📂 No saved achievements found, using defaults');
-        }
-        return AchievementDefinitions.allAchievements;
-      }
-      
-      final achievementsJson = json['achievements'] as List;
-      final achievements = achievementsJson
-          .map((a) => AchievementModel.fromJson(a as Map<String, dynamic>))
-          .toList();
-      
-      if (AppConstants.enableDebugLogging) {
-        debugPrint('📂 Achievements loaded: ${achievements.length} achievements');
-      }
+      final achievements = jsonList.map((json) => Achievement.fromJson(json)).toList();
+      developer.log('Loaded ${achievements.length} achievements', name: 'LocalStorageDataSource');
       
       return achievements;
-    } catch (e) {
-      debugPrint('❌ Failed to load achievements: $e');
-      return AchievementDefinitions.allAchievements;
+    } catch (e, stackTrace) {
+      developer.log('Error loading achievements: $e', name: 'LocalStorageDataSource', stackTrace: stackTrace);
+      return [];
     }
   }
-  
-  // Settings Operations
-  Future<bool> saveSettings(Map<String, dynamic> settings) async {
+
+  /// Add a new achievement
+  Future<bool> addAchievement(Achievement achievement) async {
     try {
-      final success = await _storage.setJson(AppConstants.settingsKey, settings);
+      developer.log('Adding achievement: ${achievement.id}', name: 'LocalStorageDataSource');
       
-      if (AppConstants.enableDebugLogging) {
-        debugPrint('💾 Settings saved: ${success ? "success" : "failed"}');
+      final existingAchievements = await loadAchievements();
+      
+      // Check if achievement already exists
+      final exists = existingAchievements.any((a) => a.id == achievement.id);
+      if (exists) {
+        developer.log('Achievement already exists: ${achievement.id}', name: 'LocalStorageDataSource');
+        return true; // Not an error, just already exists
+      }
+      
+      existingAchievements.add(achievement);
+      return await saveAchievements(existingAchievements);
+    } catch (e) {
+      developer.log('Error adding achievement: $e', name: 'LocalStorageDataSource');
+      return false;
+    }
+  }
+
+  /// Delete all achievements
+  Future<bool> deleteAllAchievements() async {
+    try {
+      developer.log('Deleting all achievements', name: 'LocalStorageDataSource');
+      
+      final success = await _storageService.remove(_storageService.achievementsKeyV2);
+      
+      if (success) {
+        developer.log('All achievements deleted', name: 'LocalStorageDataSource');
       }
       
       return success;
     } catch (e) {
-      debugPrint('❌ Failed to save settings: $e');
+      developer.log('Error deleting achievements: $e', name: 'LocalStorageDataSource');
       return false;
     }
   }
-  
-  Map<String, dynamic> loadSettings() {
+
+  // ========================================
+  // HIGH SCORES
+  // ========================================
+
+  /// Save high scores
+  Future<bool> saveHighScores(List<Map<String, dynamic>> highScores) async {
     try {
-      final settings = _storage.getJson(AppConstants.settingsKey);
+      developer.log('Saving ${highScores.length} high scores', name: 'LocalStorageDataSource');
       
-      if (settings == null) {
-        if (AppConstants.enableDebugLogging) {
-          debugPrint('📂 No saved settings found, using defaults');
-        }
-        return _getDefaultSettings();
+      final success = await _storageService.saveHighScores(highScores);
+      
+      if (success) {
+        developer.log('High scores saved successfully', name: 'LocalStorageDataSource');
       }
       
-      if (AppConstants.enableDebugLogging) {
-        debugPrint('📂 Settings loaded');
+      return success;
+    } catch (e) {
+      developer.log('Error saving high scores: $e', name: 'LocalStorageDataSource');
+      return false;
+    }
+  }
+
+  /// Load high scores
+  Future<List<Map<String, dynamic>>> loadHighScores() async {
+    try {
+      developer.log('Loading high scores', name: 'LocalStorageDataSource');
+      
+      final highScores = await _storageService.loadHighScores();
+      
+      if (highScores == null) {
+        developer.log('No high scores found', name: 'LocalStorageDataSource');
+        return [];
+      }
+      
+      developer.log('Loaded ${highScores.length} high scores', name: 'LocalStorageDataSource');
+      return highScores;
+    } catch (e) {
+      developer.log('Error loading high scores: $e', name: 'LocalStorageDataSource');
+      return [];
+    }
+  }
+
+  /// Add a new high score
+  Future<bool> addHighScore(Map<String, dynamic> scoreData) async {
+    try {
+      developer.log('Adding high score: ${scoreData['score']}', name: 'LocalStorageDataSource');
+      
+      final existingScores = await loadHighScores();
+      existingScores.add(scoreData);
+      
+      // Sort by score (descending) and keep top scores only
+      existingScores.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
+      
+      // Keep only top 100 scores
+      const maxScores = 100;
+      if (existingScores.length > maxScores) {
+        existingScores.removeRange(maxScores, existingScores.length);
+      }
+      
+      return await saveHighScores(existingScores);
+    } catch (e) {
+      developer.log('Error adding high score: $e', name: 'LocalStorageDataSource');
+      return false;
+    }
+  }
+
+  // ========================================
+  // SETTINGS AND PREFERENCES
+  // ========================================
+
+  /// Save app settings
+  Future<bool> saveAppSettings(Map<String, dynamic> settings) async {
+    try {
+      developer.log('Saving app settings', name: 'LocalStorageDataSource');
+      
+      final success = await _storageService.saveAppSettings(settings);
+      
+      if (success) {
+        developer.log('App settings saved successfully', name: 'LocalStorageDataSource');
+      }
+      
+      return success;
+    } catch (e) {
+      developer.log('Error saving app settings: $e', name: 'LocalStorageDataSource');
+      return false;
+    }
+  }
+
+  /// Load app settings
+  Future<Map<String, dynamic>?> loadAppSettings() async {
+    try {
+      developer.log('Loading app settings', name: 'LocalStorageDataSource');
+      
+      final settings = await _storageService.loadAppSettings();
+      
+      if (settings != null) {
+        developer.log('App settings loaded', name: 'LocalStorageDataSource');
+      } else {
+        developer.log('No app settings found', name: 'LocalStorageDataSource');
       }
       
       return settings;
     } catch (e) {
-      debugPrint('❌ Failed to load settings: $e');
-      return _getDefaultSettings();
-    }
-  }
-  
-  Map<String, dynamic> _getDefaultSettings() {
-    return {
-      'musicEnabled': true,
-      'sfxEnabled': true,
-      'musicVolume': AppConstants.defaultMusicVolume,
-      'sfxVolume': AppConstants.defaultSfxVolume,
-      'showHints': true,
-      'autoSave': true,
-      'highPerformanceMode': false,
-      'reduceAnimations': false,
-      'theme': 'dark',
-    };
-  }
-  
-  // Daily Reward Operations
-  Future<bool> saveLastClaimDate(DateTime date) async {
-    try {
-      final success = await _storage.setString(
-        'last_daily_claim',
-        date.toIso8601String(),
-      );
-      
-      if (AppConstants.enableDebugLogging) {
-        debugPrint('💾 Last claim date saved: ${success ? "success" : "failed"}');
-      }
-      
-      return success;
-    } catch (e) {
-      debugPrint('❌ Failed to save last claim date: $e');
-      return false;
-    }
-  }
-  
-  DateTime? loadLastClaimDate() {
-    try {
-      final dateString = _storage.getString('last_daily_claim');
-      
-      if (dateString == null) return null;
-      
-      return DateTime.tryParse(dateString);
-    } catch (e) {
-      debugPrint('❌ Failed to load last claim date: $e');
+      developer.log('Error loading app settings: $e', name: 'LocalStorageDataSource');
       return null;
     }
   }
-  
-  bool canClaimDailyReward() {
-    final lastClaim = loadLastClaimDate();
-    if (lastClaim == null) return true;
-    
-    final now = DateTime.now();
-    final daysSinceLastClaim = now.difference(lastClaim).inDays;
-    
-    return daysSinceLastClaim >= 1;
-  }
-  
-  // High Scores Operations
-  Future<bool> saveHighScores(List<int> scores) async {
+
+  /// Save user preferences
+  Future<bool> saveUserPreferences(Map<String, dynamic> preferences) async {
     try {
-      final scoresString = scores.map((s) => s.toString()).toList();
-      final success = await _storage.setStringList('high_scores', scoresString);
+      developer.log('Saving user preferences', name: 'LocalStorageDataSource');
       
-      if (AppConstants.enableDebugLogging) {
-        debugPrint('💾 High scores saved: ${success ? "success" : "failed"}');
+      final success = await _storageService.saveUserPreferences(preferences);
+      
+      if (success) {
+        developer.log('User preferences saved successfully', name: 'LocalStorageDataSource');
       }
       
       return success;
     } catch (e) {
-      debugPrint('❌ Failed to save high scores: $e');
+      developer.log('Error saving user preferences: $e', name: 'LocalStorageDataSource');
       return false;
     }
   }
-  
-  List<int> loadHighScores() {
+
+  /// Load user preferences
+  Future<Map<String, dynamic>?> loadUserPreferences() async {
     try {
-      final scoresString = _storage.getStringList('high_scores');
+      developer.log('Loading user preferences', name: 'LocalStorageDataSource');
       
-      if (scoresString.isEmpty) return [];
+      final preferences = await _storageService.getUserPreferences();
       
-      final scores = scoresString
-          .map((s) => int.tryParse(s) ?? 0)
-          .where((s) => s > 0)
-          .toList()
-        ..sort((a, b) => b.compareTo(a)); // Descending order
-      
-      return scores.take(10).toList(); // Top 10
-    } catch (e) {
-      debugPrint('❌ Failed to load high scores: $e');
-      return [];
-    }
-  }
-  
-  Future<bool> addHighScore(int score) async {
-    final currentScores = loadHighScores();
-    currentScores.add(score);
-    currentScores.sort((a, b) => b.compareTo(a));
-    
-    // Keep only top 10
-    final topScores = currentScores.take(10).toList();
-    
-    return saveHighScores(topScores);
-  }
-  
-  // Utility Operations
-  Future<bool> exportAllData() async {
-    try {
-      final allData = _storage.exportAllData();
-      
-      if (AppConstants.enableDebugLogging) {
-        debugPrint('📤 Data export: ${allData.length} keys');
+      if (preferences != null) {
+        developer.log('User preferences loaded', name: 'LocalStorageDataSource');
+      } else {
+        developer.log('No user preferences found', name: 'LocalStorageDataSource');
       }
       
-      // In a real app, you might save this to a file or cloud
-      return true;
+      return preferences;
     } catch (e) {
-      debugPrint('❌ Failed to export data: $e');
-      return false;
+      developer.log('Error loading user preferences: $e', name: 'LocalStorageDataSource');
+      return null;
     }
   }
-  
-  Future<bool> importAllData(Map<String, dynamic> data) async {
+
+  /// Save tutorial progress
+  Future<bool> saveTutorialProgress(Map<String, dynamic> progress) async {
     try {
-      final success = await _storage.importData(data);
+      developer.log('Saving tutorial progress', name: 'LocalStorageDataSource');
       
-      if (AppConstants.enableDebugLogging) {
-        debugPrint('📥 Data import: ${success ? "success" : "failed"}');
+      final success = await _storageService.saveTutorialProgress(progress);
+      
+      if (success) {
+        developer.log('Tutorial progress saved successfully', name: 'LocalStorageDataSource');
       }
       
       return success;
     } catch (e) {
-      debugPrint('❌ Failed to import data: $e');
+      developer.log('Error saving tutorial progress: $e', name: 'LocalStorageDataSource');
       return false;
     }
   }
-  
-  Future<bool> clearAllData() async {
+
+  /// Load tutorial progress
+  Future<Map<String, dynamic>?> loadTutorialProgress() async {
     try {
-      final success = await _storage.clear();
+      developer.log('Loading tutorial progress', name: 'LocalStorageDataSource');
       
-      if (AppConstants.enableDebugLogging) {
-        debugPrint('🗑️ All data cleared: ${success ? "success" : "failed"}');
+      final progress = await _storageService.loadTutorialProgress();
+      
+      if (progress != null) {
+        developer.log('Tutorial progress loaded', name: 'LocalStorageDataSource');
+      } else {
+        developer.log('No tutorial progress found', name: 'LocalStorageDataSource');
+      }
+      
+      return progress;
+    } catch (e) {
+      developer.log('Error loading tutorial progress: $e', name: 'LocalStorageDataSource');
+      return null;
+    }
+  }
+
+  // ========================================
+  // DATA MANAGEMENT
+  // ========================================
+
+  /// Clear all game data
+  Future<bool> clearAllGameData() async {
+    try {
+      developer.log('Clearing all game data', name: 'LocalStorageDataSource');
+      
+      final success = await _storageService.clearAll();
+      
+      if (success) {
+        developer.log('All game data cleared successfully', name: 'LocalStorageDataSource');
       }
       
       return success;
     } catch (e) {
-      debugPrint('❌ Failed to clear all data: $e');
+      developer.log('Error clearing all game data: $e', name: 'LocalStorageDataSource');
       return false;
     }
   }
-  
-  // Storage Statistics
-  Map<String, dynamic> getStorageStats() {
+
+  /// Export all data for backup
+  Future<Map<String, dynamic>> exportAllData() async {
     try {
-      final stats = _storage.getStorageStats();
+      developer.log('Exporting all data for backup', name: 'LocalStorageDataSource');
       
-      if (AppConstants.enableDebugLogging) {
-        debugPrint('📊 Storage stats: ${stats['totalKeys']} keys, ${stats['approximateSize']} bytes');
+      final exportData = await _storageService.exportAllData();
+      
+      developer.log('Data export completed with ${exportData.length} entries', name: 'LocalStorageDataSource');
+      return exportData;
+    } catch (e, stackTrace) {
+      developer.log('Error exporting data: $e', name: 'LocalStorageDataSource', stackTrace: stackTrace);
+      rethrow;
+    }
+  }
+
+  /// Import data from backup
+  Future<bool> importAllData(Map<String, dynamic> backupData) async {
+    try {
+      developer.log('Importing data from backup', name: 'LocalStorageDataSource');
+      
+      final success = await _storageService.importAllData(backupData);
+      
+      if (success) {
+        developer.log('Data import completed successfully', name: 'LocalStorageDataSource');
       }
       
+      return success;
+    } catch (e, stackTrace) {
+      developer.log('Error importing data: $e', name: 'LocalStorageDataSource', stackTrace: stackTrace);
+      return false;
+    }
+  }
+
+  /// Get storage statistics
+  Map<String, dynamic> getStorageStatistics() {
+    try {
+      final stats = _storageService.getStorageStats();
+      developer.log('Retrieved storage statistics', name: 'LocalStorageDataSource');
       return stats;
     } catch (e) {
-      debugPrint('❌ Failed to get storage stats: $e');
-      return {
-        'totalKeys': 0,
-        'approximateSize': 0,
-        'keysByType': {},
-      };
+      developer.log('Error getting storage statistics: $e', name: 'LocalStorageDataSource');
+      return {};
+    }
+  }
+
+  /// Perform storage cleanup
+  Future<void> performCleanup() async {
+    try {
+      developer.log('Performing storage cleanup', name: 'LocalStorageDataSource');
+      
+      await _storageService.cleanupExpiredData();
+      
+      developer.log('Storage cleanup completed', name: 'LocalStorageDataSource');
+    } catch (e) {
+      developer.log('Error during storage cleanup: $e', name: 'LocalStorageDataSource');
     }
   }
 }

@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:puzzle_box/core/state/ui_state.dart';
 import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
-import 'package:puzzle_box/presentation/pages/splash_page_dart.dart';
+import 'package:puzzle_box/presentation/pages/game_page_dart.dart';
+import 'package:puzzle_box/presentation/pages/main_menu_page_dart.dart';
+import 'package:puzzle_box/presentation/pages/settings_page.dart';
 import 'package:puzzle_box/core/utils/responsive_utils.dart';
+import 'package:puzzle_box/presentation/pages/splash_page_dart.dart';
 import 'injection_container.dart' as di;
-import 'core/theme/app_theme.dart';
+import 'core/theme/app_theme.dart' hide AppTheme;
 
 class BoxHooksApp extends StatelessWidget {
   const BoxHooksApp({super.key});
@@ -15,15 +19,13 @@ class BoxHooksApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
-        // ✅ FIXED: Remove invalid method calls (.initialize(), .exportPlayerData())
-        // These methods don't exist or are private, so just create the cubits cleanly
         BlocProvider<GameCubit>(
           create: (context) => di.getIt<GameCubit>(),
         ),
         BlocProvider<PlayerCubit>(
           create: (context) {
             final cubit = di.getIt<PlayerCubit>();
-            // Initialize player data when cubit is created
+            // Initialize player data asynchronously
             cubit.initializePlayer();
             return cubit;
           },
@@ -34,7 +36,7 @@ class BoxHooksApp extends StatelessWidget {
       ],
       child: Builder(
         builder: (context) {
-          // Initialize ResponsiveUtils with context on first build
+          // Initialize ResponsiveUtils with context
           ResponsiveUtils.initialize(context);
           
           return MaterialApp(
@@ -44,52 +46,206 @@ class BoxHooksApp extends StatelessWidget {
             darkTheme: AppTheme.darkTheme,
             themeMode: ThemeMode.dark,
             
-            // ✅ FIXED: Add proper navigation and state management
+            // Navigation handling based on UI state
             home: BlocListener<UICubit, UIState>(
               listener: (context, state) {
-                // Handle global UI state changes
-                if (state.hasError) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(state.errorMessage ?? 'An error occurred'),
-                      backgroundColor: AppTheme.errorColor,
-                    ),
-                  );
-                }
+                _handleGlobalUIChanges(context, state);
               },
-              child: const SplashPage(),
+              child: const AppNavigator(),
             ),
             
+            // Global text scaling constraints for better UX
             builder: (context, child) {
               return MediaQuery(
                 data: MediaQuery.of(context).copyWith(
                   textScaler: MediaQuery.of(context).textScaler.clamp(
-                    minScaleFactor: 0.8,
-                    maxScaleFactor: 1.4,
+                    minScaleFactor: 0.85,
+                    maxScaleFactor: 1.3,
                   ),
                 ),
                 child: child!,
               );
             },
             
-            // ✅ ADDED: Global navigation based on UICubit state
+            // Global navigation observer
             navigatorObservers: [
               AppNavigatorObserver(),
             ],
+            
+            // Routes for proper navigation
+            routes: {
+              '/': (context) => const AppNavigator(),
+              '/menu': (context) => const MainMenuPage(),
+              '/game': (context) => const GamePage(),
+              '/settings': (context) => const SettingsPage(),
+            },
           );
         },
       ),
     );
   }
+
+  /// Handle global UI state changes
+  void _handleGlobalUIChanges(BuildContext context, UIState state) {
+    // Handle global errors
+    if (state.hasError && state.errorMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(state.errorMessage!),
+          backgroundColor: AppTheme.errorColor,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          action: SnackBarAction(
+            label: 'Dismiss',
+            textColor: Colors.white,
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            },
+          ),
+        ),
+      );
+    }
+    
+    // Handle achievement notifications
+    if (state.hasUnseenAchievements) {
+      _showAchievementNotification(context);
+    }
+  }
+
+  /// Show achievement notification overlay
+  void _showAchievementNotification(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => const AchievementNotificationDialog(),
+    );
+  }
 }
 
-/// Navigator observer to handle state-based navigation
+/// Main app navigator that handles page routing based on state
+class AppNavigator extends StatelessWidget {
+  const AppNavigator({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<UICubit, UIState>(
+      builder: (context, uiState) {
+        switch (uiState.currentPage) {
+          case AppPage.splash:
+            return const SplashPage();
+          case AppPage.mainMenu:
+            return const MainMenuPage();
+          case AppPage.game:
+            return const GamePage();
+          case AppPage.settings:
+            return const SettingsPage();
+          default:
+            return const SplashPage();
+        }
+      },
+    );
+  }
+}
+
+/// Achievement notification dialog
+class AchievementNotificationDialog extends StatelessWidget {
+  const AchievementNotificationDialog({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF4ECDC4),
+              Color(0xFF44A08D),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.emoji_events,
+              color: Colors.white,
+              size: 48,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Achievement Unlocked!',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Check your profile to see your new achievement.',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.white.withOpacity(0.2),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+              ),
+              child: const Text(
+                'Awesome!',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Navigator observer for debugging and analytics
 class AppNavigatorObserver extends NavigatorObserver {
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
-    // Log navigation for debugging
-    debugPrint('📱 Navigated to: ${route.settings.name}');
+    debugPrint('📱 Navigation: Pushed ${route.settings.name}');
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    debugPrint('📱 Navigation: Popped ${route.settings.name}');
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    debugPrint('📱 Navigation: Replaced ${oldRoute?.settings.name} with ${newRoute?.settings.name}');
   }
 }
 
@@ -100,121 +256,3 @@ extension CubitContext on BuildContext {
   UICubit get uiCubit => read<UICubit>();
 }
 
-/// State management initialization widget
-class StateManagerInitializer extends StatefulWidget {
-  final Widget child;
-  
-  const StateManagerInitializer({
-    super.key,
-    required this.child,
-  });
-
-  @override
-  State<StateManagerInitializer> createState() => _StateManagerInitializerState();
-}
-
-class _StateManagerInitializerState extends State<StateManagerInitializer> {
-  bool _isInitialized = false;
-  String? _initializationError;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeStateManagement();
-  }
-
-  Future<void> _initializeStateManagement() async {
-    try {
-      // Initialize state management
-      await di.initializeStateManagement();
-      
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _initializationError = e.toString();
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_initializationError != null) {
-      return MaterialApp(
-        home: Scaffold(
-          backgroundColor: AppTheme.errorColor,
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.error_outline,
-                  color: Colors.white,
-                  size: 64,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'State Management Error',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _initializationError!,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      _initializationError = null;
-                    });
-                    _initializeStateManagement();
-                  },
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (!_isInitialized) {
-      return MaterialApp(
-        home: Scaffold(
-          backgroundColor: AppTheme.backgroundColor,
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(
-                  color: AppTheme.primaryColor,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Initializing State Management...',
-                  style: AppTheme.bodyStyle,
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return widget.child;
-  }
-}

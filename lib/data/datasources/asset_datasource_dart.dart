@@ -3,7 +3,6 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:flame/flame.dart';
-import 'package:flame_audio/flame_audio.dart';
 import 'package:puzzle_box/core/errors/exceptions_dart.dart';
 import '../../core/constants/asset_constants.dart';
 
@@ -183,7 +182,7 @@ class DefaultAssetDataSource implements AssetDataSource {
     void Function(AssetLoadingProgress)? onProgress,
   }) async {
     if (!_isInitialized) {
-      throw StateException('AssetDataSource not initialized');
+      throw const StateException('AssetDataSource not initialized');
     }
 
     try {
@@ -222,7 +221,7 @@ class DefaultAssetDataSource implements AssetDataSource {
   @override
   Future<void> loadImage(String path) async {
     if (!_isInitialized) {
-      throw StateException('AssetDataSource not initialized');
+      throw const StateException('AssetDataSource not initialized');
     }
 
     await _loadAssetWithRetry(path, isImage: true);
@@ -231,7 +230,7 @@ class DefaultAssetDataSource implements AssetDataSource {
   @override
   Future<void> loadAudio(String path) async {
     if (!_isInitialized) {
-      throw StateException('AssetDataSource not initialized');
+      throw const StateException('AssetDataSource not initialized');
     }
 
     await _loadAssetWithRetry(path, isImage: false);
@@ -240,7 +239,7 @@ class DefaultAssetDataSource implements AssetDataSource {
   @override
   Future<void> loadAssets(List<String> paths) async {
     if (!_isInitialized) {
-      throw StateException('AssetDataSource not initialized');
+      throw const StateException('AssetDataSource not initialized');
     }
 
     try {

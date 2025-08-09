@@ -3,11 +3,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:puzzle_box/domain/entities/achievement_entity.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 import 'package:puzzle_box/presentation/widgets/common/responsive_layout_dart.dart';
-import '../widgets/common/gradient_button.dart';
 import '../widgets/common/animated_counter.dart';
 import '../widgets/overlays/achievement_overlay.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/constants/app_constants.dart';
 import '../../core/utils/responsive_utils.dart';
 
 class AchievementsPage extends StatefulWidget {
