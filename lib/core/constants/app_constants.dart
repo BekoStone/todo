@@ -137,8 +137,9 @@ class AppConstants {
   static const int maxSimultaneousAnimations = 5;
   
   /// Frame rate targets
-  static const int targetFPS = 60;
+  static const int minTargetFPS = 60;
   static const double maxFrameTime = 16.67; // milliseconds (60 FPS)
+  static const int maxColdStartMs = 3000;
 
   // ========================================
   // 🎨 ANIMATION TIMINGS

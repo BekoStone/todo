@@ -15,7 +15,7 @@ class AppTheme {
   // ========================================
 
   /// Light theme color scheme
-  static const ColorScheme _lightColorScheme = ColorScheme.light(
+  static final ColorScheme _lightColorScheme = ColorScheme.light(
     brightness: Brightness.light,
     primary: AppColors.primary,
     onPrimary: AppColors.onPrimary,
@@ -50,7 +50,7 @@ class AppTheme {
   );
 
   /// Dark theme color scheme
-  static const ColorScheme _darkColorScheme = ColorScheme.dark(
+  static final ColorScheme _darkColorScheme = ColorScheme.dark(
     brightness: Brightness.dark,
     primary: AppColors.primary,
     onPrimary: AppColors.onPrimary,
@@ -374,8 +374,8 @@ class AppTheme {
   }
 
   /// Card theme
-  static CardTheme _cardTheme(ColorScheme colorScheme) {
-    return CardTheme(
+  static CardThemeData _cardTheme(ColorScheme colorScheme) {
+    return CardThemeData(
       color: colorScheme.surface,
       surfaceTintColor: colorScheme.surfaceTint,
       elevation: 1,
@@ -421,7 +421,7 @@ class AppTheme {
         color: colorScheme.onSurfaceVariant,
       ),
       hintStyle: _baseTextTheme.bodyMedium?.copyWith(
-        color: colorScheme.onSurfaceVariant.withOpacity(0.6),
+        color: colorScheme.onSurfaceVariant.withValues(alpha:0.6),
       ),
     );
   }
@@ -480,7 +480,7 @@ class AppTheme {
   static NavigationBarThemeData _navigationBarTheme(ColorScheme colorScheme) {
     return NavigationBarThemeData(
       backgroundColor: colorScheme.surface,
-      surfaceTint: colorScheme.surfaceTint,
+      surfaceTintColor: colorScheme.surfaceTint,
       elevation: 3,
       shadowColor: colorScheme.shadow,
       height: 80,
@@ -511,8 +511,8 @@ class AppTheme {
   }
 
   /// Dialog theme
-  static DialogTheme _dialogTheme(ColorScheme colorScheme) {
-    return DialogTheme(
+  static DialogThemeData _dialogTheme(ColorScheme colorScheme) {
+    return DialogThemeData(
       backgroundColor: colorScheme.surface,
       surfaceTintColor: colorScheme.surfaceTint,
       elevation: 24,
@@ -538,7 +538,7 @@ class AppTheme {
         color: colorScheme.onInverseSurface,
       ),
       actionTextColor: colorScheme.inversePrimary,
-      disabledActionTextColor: colorScheme.onInverseSurface.withOpacity(0.38),
+      disabledActionTextColor: colorScheme.onInverseSurface.withValues(alpha:0.38),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppConstants.buttonBorderRadius),
       ),
@@ -553,7 +553,7 @@ class AppTheme {
       backgroundColor: colorScheme.surfaceVariant,
       selectedColor: colorScheme.secondaryContainer,
       deleteIconColor: colorScheme.onSurfaceVariant,
-      disabledColor: colorScheme.onSurface.withOpacity(0.12),
+      disabledColor: colorScheme.onSurface.withValues(alpha:0.12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppConstants.buttonBorderRadius),
       ),
@@ -595,15 +595,15 @@ class AppTheme {
           return colorScheme.primary;
         }
         if (states.contains(WidgetState.disabled)) {
-          return colorScheme.onSurface.withOpacity(0.12);
+          return colorScheme.onSurface.withValues(alpha:0.12);
         }
         return colorScheme.surfaceVariant;
       }),
       overlayColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
-          return colorScheme.primary.withOpacity(0.12);
+          return colorScheme.primary.withValues(alpha:0.12);
         }
-        return colorScheme.onSurface.withOpacity(0.12);
+        return colorScheme.onSurface.withValues(alpha:0.12);
       }),
     );
   }
@@ -614,7 +614,7 @@ class AppTheme {
       activeTrackColor: colorScheme.primary,
       inactiveTrackColor: colorScheme.surfaceVariant,
       thumbColor: colorScheme.primary,
-      overlayColor: colorScheme.primary.withOpacity(0.12),
+      overlayColor: colorScheme.primary.withValues(alpha:0.12),
       valueIndicatorColor: colorScheme.primary,
       valueIndicatorTextStyle: _baseTextTheme.bodySmall?.copyWith(
         color: colorScheme.onPrimary,

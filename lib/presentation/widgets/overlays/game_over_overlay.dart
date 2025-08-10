@@ -9,6 +9,7 @@ import '../common/animated_counter.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/responsive_utils.dart';
 import '../../../core/services/audio_service.dart';
+import '../../../core/theme/colors.dart';
 import '../../../injection_container.dart';
 
 /// GameOverOverlay displays game completion results with achievements and actions.
@@ -62,10 +63,12 @@ class GameOverOverlay extends StatefulWidget {
 class _GameOverOverlayState extends State<GameOverOverlay>
     with TickerProviderStateMixin {
   
-  // Animation controllers
+  // Animation controllers - CRITICAL: Must be disposed properly
   late AnimationController _mainController;
   late AnimationController _achievementController;
   late AnimationController _statsController;
+  late AnimationController _buttonController;
+  late AnimationController _sparkleController;
   
   // Animations
   late Animation<double> _fadeAnimation;
@@ -73,6 +76,8 @@ class _GameOverOverlayState extends State<GameOverOverlay>
   late Animation<Offset> _slideAnimation;
   late Animation<double> _achievementSlideAnimation;
   late Animation<double> _statsRevealAnimation;
+  late Animation<double> _buttonStaggerAnimation;
+  late Animation<double> _sparkleRotation;
   
   // Audio service
   late AudioService _audioService;
@@ -94,9 +99,14 @@ class _GameOverOverlayState extends State<GameOverOverlay>
   @override
   void dispose() {
     _isDisposed = true;
+    
+    // CRITICAL: Dispose all animation controllers to prevent memory leaks
     _mainController.dispose();
     _achievementController.dispose();
     _statsController.dispose();
+    _buttonController.dispose();
+    _sparkleController.dispose();
+    
     super.dispose();
   }
 
@@ -116,6 +126,18 @@ class _GameOverOverlayState extends State<GameOverOverlay>
     // Stats animation
     _statsController = AnimationController(
       duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    );
+    
+    // Button animation
+    _buttonController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    
+    // Sparkle animation
+    _sparkleController = AnimationController(
+      duration: const Duration(seconds: 3),
       vsync: this,
     );
 
@@ -149,7 +171,7 @@ class _GameOverOverlayState extends State<GameOverOverlay>
       end: 0.0,
     ).animate(CurvedAnimation(
       parent: _achievementController,
-      curve: Curves.easeOutBounce,
+      curve: Curves.bounceOut,
     ));
 
     _statsRevealAnimation = Tween<double>(
@@ -158,6 +180,22 @@ class _GameOverOverlayState extends State<GameOverOverlay>
     ).animate(CurvedAnimation(
       parent: _statsController,
       curve: Curves.easeInOutCubic,
+    ));
+    
+    _buttonStaggerAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _buttonController,
+      curve: Curves.elasticOut,
+    ));
+    
+    _sparkleRotation = Tween<double>(
+      begin: 0.0,
+      end: 6.28318, // 2π
+    ).animate(CurvedAnimation(
+      parent: _sparkleController,
+      curve: Curves.linear,
     ));
   }
 
@@ -172,6 +210,9 @@ class _GameOverOverlayState extends State<GameOverOverlay>
       // Play game over sound
       _audioService.playSfx('game_over');
       
+      // Start sparkle animation (infinite)
+      _sparkleController.repeat();
+      
       // Start main overlay animation
       await _mainController.forward();
       
@@ -179,6 +220,11 @@ class _GameOverOverlayState extends State<GameOverOverlay>
       
       // Start stats animation
       await _statsController.forward();
+      
+      if (_isDisposed) return;
+      
+      // Start button animation
+      await _buttonController.forward();
       
       if (_isDisposed) return;
       
@@ -226,18 +272,70 @@ class _GameOverOverlayState extends State<GameOverOverlay>
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([_mainController, _achievementController, _statsController]),
+      animation: Listenable.merge([
+        _fadeAnimation,
+        _scaleAnimation,
+        _slideAnimation,
+        _achievementSlideAnimation,
+        _statsRevealAnimation,
+        _buttonStaggerAnimation,
+        _sparkleRotation,
+      ]),
       builder: (context, child) {
-        return Container(
-          color: Colors.black.withOpacity(0.8 * _fadeAnimation.value),
-          child: Center(
+        return FadeTransition(
+          opacity: _fadeAnimation,
+          child: Container(
+            color: Colors.black.withValues(alpha:0.8),
             child: SlideTransition(
               position: _slideAnimation,
               child: ScaleTransition(
                 scale: _scaleAnimation,
-                child: FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: _buildMainContent(),
+                child: Center(
+                  child: Container(
+                    width: ResponsiveUtils.wp(85),
+                    constraints: BoxConstraints(
+                      maxHeight: ResponsiveUtils.hp(75),
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          AppColors.darkSurface,
+                          AppColors.darkBackground,
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha:0.2),
+                        width: 2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha:0.5),
+                          blurRadius: 30,
+                          offset: const Offset(0, 15),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Header section
+                        _buildHeader(),
+                        
+                        // Stats section
+                        _buildStatsSection(),
+                        
+                        // Achievements section
+                        if (widget.unlockedAchievements.isNotEmpty)
+                          _buildAchievementsSection(),
+                        
+                        // Action buttons
+                        _buildActionButtons(),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -247,394 +345,404 @@ class _GameOverOverlayState extends State<GameOverOverlay>
     );
   }
 
-  Widget _buildMainContent() {
-    return Card(
-      margin: EdgeInsets.symmetric(
-        horizontal: ResponsiveUtils.wp(8),
-        vertical: ResponsiveUtils.hp(10),
-      ),
-      child: Container(
-        width: double.infinity,
-        padding: EdgeInsets.all(ResponsiveUtils.getAdaptivePadding()),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildHeader(),
-            SizedBox(height: ResponsiveUtils.hp(2)),
-            _buildScore(),
-            SizedBox(height: ResponsiveUtils.hp(2)),
-            if (widget.showDetailedStats) ...[
-              _buildDetailedStats(),
-              SizedBox(height: ResponsiveUtils.hp(2)),
-            ],
-            if (_showingAchievements && widget.unlockedAchievements.isNotEmpty) ...[
-              _buildAchievementDisplay(),
-              SizedBox(height: ResponsiveUtils.hp(2)),
-            ],
-            _buildActionButtons(),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildHeader() {
-    final isHighScore = widget.gameSession.isPersonalBest;
-    
-    return Column(
-      children: [
-        Icon(
-          isHighScore ? Icons.emoji_events : Icons.flag,
-          size: ResponsiveUtils.sp(48),
-          color: isHighScore 
-              ? Theme.of(context).colorScheme.tertiary
-              : Theme.of(context).colorScheme.primary,
-        ),
-        SizedBox(height: ResponsiveUtils.hp(1)),
-        Text(
-          isHighScore ? 'New High Score!' : 'Game Over',
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: isHighScore 
-                ? Theme.of(context).colorScheme.tertiary
-                : null,
-          ),
-        ),
-        if (isHighScore) ...[
-          SizedBox(height: ResponsiveUtils.hp(0.5)),
-          Text(
-            '🎉 Congratulations! 🎉',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: Theme.of(context).colorScheme.tertiary,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildScore() {
     return Container(
-      padding: EdgeInsets.all(ResponsiveUtils.getAdaptivePadding()),
+      padding: EdgeInsets.all(ResponsiveUtils.wp(4)),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Theme.of(context).colorScheme.primary.withOpacity(0.1),
-            Theme.of(context).colorScheme.secondary.withOpacity(0.1),
+            AppColors.primary.withValues(alpha:0.8),
+            AppColors.secondary.withValues(alpha:0.8),
           ],
         ),
-        borderRadius: BorderRadius.circular(AppConstants.cardBorderRadius),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(18),
+          topRight: Radius.circular(18),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Sparkle decoration
+          Transform.rotate(
+            angle: _sparkleRotation.value,
+            child: Icon(
+              Icons.auto_awesome,
+              color: Colors.white.withValues(alpha:0.8),
+              size: 32,
+            ),
+          ),
+          
+          const SizedBox(height: 8),
+          
+          // Game Over title
+          Text(
+            'Game Over',
+            style: TextStyle(
+              fontSize: ResponsiveUtils.sp(6),
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          
+          const SizedBox(height: 4),
+          
+          // Subtitle based on performance
+          Text(
+            _getPerformanceMessage(),
+            style: TextStyle(
+              fontSize: ResponsiveUtils.sp(3.5),
+              color: Colors.white.withValues(alpha:0.8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsSection() {
+    return Opacity(
+      opacity: _statsRevealAnimation.value,
+      child: Container(
+        padding: EdgeInsets.all(ResponsiveUtils.wp(4)),
+        child: Column(
+          children: [
+            // Score display
+            _buildScoreDisplay(),
+            
+            SizedBox(height: ResponsiveUtils.hp(2)),
+            
+            // Statistics grid
+            if (widget.showDetailedStats)
+              _buildStatisticsGrid(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScoreDisplay() {
+    return Container(
+      padding: EdgeInsets.all(ResponsiveUtils.wp(4)),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha:0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withValues(alpha:0.2),
+          width: 1,
+        ),
       ),
       child: Column(
         children: [
           Text(
             'Final Score',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            style: TextStyle(
+              fontSize: ResponsiveUtils.sp(3),
+              color: Colors.white.withValues(alpha:0.7),
             ),
           ),
-          SizedBox(height: ResponsiveUtils.hp(0.5)),
+          
+          const SizedBox(height: 8),
+          
           AnimatedCounter(
-            count: widget.gameSession.finalScore,
+            count: widget.gameSession.currentScore,
             duration: const Duration(milliseconds: 1500),
-            style: Theme.of(context).textTheme.displayMedium?.copyWith(
+            style: TextStyle(
+              fontSize: ResponsiveUtils.sp(8),
               fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.primary,
+              color: AppColors.primary,
             ),
           ),
-          if (widget.gameSession.isPersonalBest) ...[
-            SizedBox(height: ResponsiveUtils.hp(0.5)),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.tertiary,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                'PERSONAL BEST',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onTertiary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
   }
 
-  Widget _buildDetailedStats() {
-    return AnimatedBuilder(
-      animation: _statsRevealAnimation,
-      builder: (context, child) {
-        return Opacity(
-          opacity: _statsRevealAnimation.value,
-          child: Transform.scale(
-            scale: 0.8 + (0.2 * _statsRevealAnimation.value),
-            child: Container(
-              padding: EdgeInsets.all(ResponsiveUtils.getAdaptivePadding()),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceVariant,
-                borderRadius: BorderRadius.circular(AppConstants.cardBorderRadius),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    'Game Statistics',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  SizedBox(height: ResponsiveUtils.hp(1.5)),
-                  _buildStatsGrid(),
-                ],
-              ),
+  Widget _buildStatisticsGrid() {
+    final stats = [
+      {'label': 'Level', 'value': widget.gameSession.currentLevel.toString()},
+      {'label': 'Lines', 'value': widget.gameSession.linesCleared.toString()},
+      {'label': 'Time', 'value': _formatDuration(widget.gameSession.playTime)},
+      {'label': 'Blocks', 'value': widget.gameSession.statistics.blocksPlaced.toString()},
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: stats.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 2.0,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+      ),
+      itemBuilder: (context, index) {
+        final stat = stats[index];
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha:0.05),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: Colors.white.withValues(alpha:0.1),
+              width: 1,
             ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                stat['value']!,
+                style: TextStyle(
+                  fontSize: ResponsiveUtils.sp(4),
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              Text(
+                stat['label']!,
+                style: TextStyle(
+                  fontSize: ResponsiveUtils.sp(2.5),
+                  color: Colors.white.withValues(alpha:0.7),
+                ),
+              ),
+            ],
           ),
         );
       },
     );
   }
 
-  Widget _buildStatsGrid() {
-    final stats = widget.gameSession.statistics;
-    
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: ResponsiveUtils.isMobile() ? 2 : 3,
-      childAspectRatio: 2.5,
-      mainAxisSpacing: ResponsiveUtils.hp(1),
-      crossAxisSpacing: ResponsiveUtils.wp(2),
-      children: [
-        _buildStatItem('Level', '${widget.gameSession.level}', Icons.trending_up),
-        _buildStatItem('Lines', '${stats.linesCleared}', Icons.horizontal_rule),
-        _buildStatItem('Blocks', '${stats.blocksPlaced}', Icons.apps),
-        _buildStatItem('Time', _formatDuration(widget.gameSession.duration), Icons.access_time),
-        if (stats.perfectClears > 0)
-          _buildStatItem('Perfect', '${stats.perfectClears}', Icons.star),
-        if (stats.powerUpsUsed > 0)
-          _buildStatItem('Power-ups', '${stats.powerUpsUsed}', Icons.flash_on),
-      ],
-    );
-  }
+  Widget _buildAchievementsSection() {
+    if (!_showingAchievements || widget.unlockedAchievements.isEmpty) {
+      return const SizedBox();
+    }
 
-  Widget _buildStatItem(String label, String value, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon,
-            size: ResponsiveUtils.sp(16),
-            color: Theme.of(context).colorScheme.primary,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAchievementDisplay() {
-    if (widget.unlockedAchievements.isEmpty) return const SizedBox.shrink();
-    
     final achievement = widget.unlockedAchievements[_currentAchievementIndex];
-    
-    return AnimatedBuilder(
-      animation: _achievementSlideAnimation,
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(
-            ResponsiveUtils.width() * _achievementSlideAnimation.value,
-            0,
+
+    return Transform.translate(
+      offset: Offset(_achievementSlideAnimation.value * 300, 0),
+      child: Container(
+        margin: EdgeInsets.all(ResponsiveUtils.wp(4)),
+        padding: EdgeInsets.all(ResponsiveUtils.wp(3)),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppColors.accent.withValues(alpha:0.3),
+              AppColors.accent.withValues(alpha:0.1),
+            ],
           ),
-          child: Container(
-            padding: EdgeInsets.all(ResponsiveUtils.getAdaptivePadding()),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Theme.of(context).colorScheme.tertiary.withOpacity(0.2),
-                  Theme.of(context).colorScheme.primary.withOpacity(0.2),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(AppConstants.cardBorderRadius),
-              border: Border.all(
-                color: Theme.of(context).colorScheme.tertiary,
-                width: 2,
-              ),
-            ),
-            child: Column(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: AppColors.accent.withValues(alpha:0.5),
+            width: 2,
+          ),
+        ),
+        child: Column(
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.emoji_events,
-                      color: Theme.of(context).colorScheme.tertiary,
-                      size: ResponsiveUtils.sp(24),
-                    ),
-                    SizedBox(width: ResponsiveUtils.wp(2)),
-                    Text(
-                      'Achievement Unlocked!',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.tertiary,
-                      ),
-                    ),
-                  ],
+                const Icon(
+                  Icons.emoji_events,
+                  color: AppColors.accent,
+                  size: 24,
                 ),
-                SizedBox(height: ResponsiveUtils.hp(1)),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            achievement.title,
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          SizedBox(height: ResponsiveUtils.hp(0.5)),
-                          Text(
-                            achievement.description,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (achievement.coinReward > 0) ...[
-                      SizedBox(width: ResponsiveUtils.wp(2)),
-                      Column(
-                        children: [
-                          Icon(
-                            Icons.monetization_on,
-                            color: Theme.of(context).colorScheme.tertiary,
-                            size: ResponsiveUtils.sp(20),
-                          ),
-                          Text(
-                            '+${achievement.coinReward}',
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.tertiary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
+                const SizedBox(width: 8),
+                Text(
+                  'Achievement Unlocked!',
+                  style: TextStyle(
+                    fontSize: ResponsiveUtils.sp(3.5),
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.accent,
+                  ),
                 ),
               ],
             ),
-          ),
-        );
-      },
+            
+            const SizedBox(height: 8),
+            
+            Text(
+              achievement.title,
+              style: TextStyle(
+                fontSize: ResponsiveUtils.sp(3),
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+            
+            const SizedBox(height: 4),
+            
+            Text(
+              achievement.description,
+              style: TextStyle(
+                fontSize: ResponsiveUtils.sp(2.5),
+                color: Colors.white.withValues(alpha:0.8),
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildActionButtons() {
-    return Column(
-      children: [
-        // Primary actions row
-        Row(
-          children: [
-            if (widget.canUndo) ...[
+    return Container(
+      padding: EdgeInsets.all(ResponsiveUtils.wp(4)),
+      child: Column(
+        children: [
+          // Primary actions row
+          Row(
+            children: [
+              // Restart button
               Expanded(
-                child: GradientButton(
-                  text: 'Undo',
-                  icon: Icons.undo_rounded,
-                  onPressed: _handleUndo,
-                  backgroundColor: Theme.of(context).colorScheme.secondary.withOpacity(0.2),
-                  textColor: Theme.of(context).colorScheme.secondary,
-                  height: ResponsiveUtils.getButtonSize(),
+                child: Transform.translate(
+                  offset: Offset(0, (1 - _buttonStaggerAnimation.value) * 50),
+                  child: Opacity(
+                    opacity: _buttonStaggerAnimation.value,
+                    child: GradientButton(
+                      text: 'Play Again',
+                      onPressed: _handleRestart,
+                      gradient: const LinearGradient(
+                        colors: [AppColors.primary, AppColors.secondary],
+                      ),
+                      height: ResponsiveUtils.hp(6),
+                    ),
+                  ),
                 ),
               ),
+              
               SizedBox(width: ResponsiveUtils.wp(2)),
-            ],
-            Expanded(
-              child: GradientButton(
-                text: 'Play Again',
-                icon: Icons.refresh_rounded,
-                onPressed: _handleRestart,
-                gradient: LinearGradient(
-                  colors: [
-                    Theme.of(context).colorScheme.primary,
-                    Theme.of(context).colorScheme.secondary,
-                  ],
-                ),
-                height: ResponsiveUtils.getButtonSize(),
-              ),
-            ),
-          ],
-        ),
-        
-        SizedBox(height: ResponsiveUtils.hp(1.5)),
-        
-        // Secondary actions row
-        Row(
-          children: [
-            Expanded(
-              child: GradientButton(
-                text: 'Share',
-                icon: Icons.share_rounded,
-                onPressed: _handleShare,
-                backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
-                textColor: Theme.of(context).colorScheme.onSurfaceVariant,
-                height: ResponsiveUtils.getButtonSize() * 0.8,
-              ),
-            ),
-            SizedBox(width: ResponsiveUtils.wp(2)),
-            if (widget.onWatchAd != null) ...[
+              
+              // Main menu button
               Expanded(
-                child: GradientButton(
-                  text: 'Watch Ad',
-                  icon: Icons.play_circle_outline,
-                  onPressed: _handleWatchAd,
-                  backgroundColor: Theme.of(context).colorScheme.tertiary.withOpacity(0.2),
-                  textColor: Theme.of(context).colorScheme.tertiary,
-                  height: ResponsiveUtils.getButtonSize() * 0.8,
+                child: Transform.translate(
+                  offset: Offset(0, (1 - _buttonStaggerAnimation.value) * 30),
+                  child: Opacity(
+                    opacity: _buttonStaggerAnimation.value * 0.8,
+                    child: GradientButton(
+                      text: 'Main Menu',
+                      onPressed: _handleMainMenu,
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.grey.withValues(alpha:0.3),
+                          Colors.grey.withValues(alpha:0.1),
+                        ],
+                      ),
+                      height: ResponsiveUtils.hp(6),
+                    ),
+                  ),
                 ),
               ),
-              SizedBox(width: ResponsiveUtils.wp(2)),
             ],
-            Expanded(
-              child: GradientButton(
-                text: 'Main Menu',
-                icon: Icons.home_rounded,
-                onPressed: _handleMainMenu,
-                backgroundColor: Theme.of(context).colorScheme.error.withOpacity(0.2),
-                textColor: Theme.of(context).colorScheme.error,
-                height: ResponsiveUtils.getButtonSize() * 0.8,
-              ),
-            ),
-          ],
-        ),
-      ],
+          ),
+          
+          SizedBox(height: ResponsiveUtils.hp(1)),
+          
+          // Secondary actions row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              // Share button
+              if (widget.onShare != null)
+                Transform.translate(
+                  offset: Offset((1 - _buttonStaggerAnimation.value) * -30, 0),
+                  child: Opacity(
+                    opacity: _buttonStaggerAnimation.value,
+                    child: _buildIconButton(
+                      icon: Icons.share,
+                      label: 'Share',
+                      onPressed: _handleShare,
+                    ),
+                  ),
+                ),
+              
+              // Undo button (if available)
+              if (widget.canUndo && widget.onUndo != null)
+                Transform.translate(
+                  offset: Offset(0, (1 - _buttonStaggerAnimation.value) * 20),
+                  child: Opacity(
+                    opacity: _buttonStaggerAnimation.value,
+                    child: _buildIconButton(
+                      icon: Icons.undo,
+                      label: 'Undo',
+                      onPressed: _handleUndo,
+                      color: AppColors.warning,
+                    ),
+                  ),
+                ),
+              
+              // Watch ad button
+              if (widget.onWatchAd != null)
+                Transform.translate(
+                  offset: Offset((1 - _buttonStaggerAnimation.value) * 30, 0),
+                  child: Opacity(
+                    opacity: _buttonStaggerAnimation.value,
+                    child: _buildIconButton(
+                      icon: Icons.play_arrow,
+                      label: 'Bonus',
+                      onPressed: _handleWatchAd,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
+  }
+
+  Widget _buildIconButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    Color? color,
+  }) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: (color ?? Colors.white).withValues(alpha:0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: (color ?? Colors.white).withValues(alpha:0.3),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: color ?? Colors.white,
+              size: 20,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: color ?? Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getPerformanceMessage() {
+    final score = widget.gameSession.currentScore;
+    
+    if (score > 10000) {
+      return 'Incredible Performance!';
+    } else if (score > 5000) {
+      return 'Great Job!';
+    } else if (score > 1000) {
+      return 'Good Work!';
+    } else {
+      return 'Keep Practicing!';
+    }
   }
 
   String _formatDuration(Duration duration) {
@@ -677,9 +785,11 @@ class _GameOverOverlayState extends State<GameOverOverlay>
   }
 
   Future<void> _closeOverlay() async {
-    await _mainController.reverse();
-    if (!_isDisposed && mounted) {
-      context.read<UICubit>().hideGameOverOverlay();
+    if (!_isDisposed) {
+      await _mainController.reverse();
+      if (mounted) {
+        context.read<UICubit>().hideGameOverOverlay();
+      }
     }
   }
 

@@ -5,7 +5,7 @@ import 'package:puzzle_box/core/services/audio_service.dart';
 import 'package:puzzle_box/core/services/storage_service.dart';
 import 'package:puzzle_box/core/constants/app_constants.dart';
 import 'package:puzzle_box/core/state/ui_state.dart';
-import 'package:puzzle_box/domain/entities/achievement_entity.dart';
+import 'package:puzzle_box/domain/entities/achievement_entity.dart' hide Achievement;
 
 /// UICubit manages global UI state, navigation, settings, and user preferences.
 /// Handles app-wide UI behavior, theme, audio settings, and navigation flow.
@@ -80,6 +80,8 @@ class UICubit extends Cubit<UIState> {
         return null; // No back from main menu
       case AppPage.splash:
         return null; // No back from splash
+      case AppPage.store:
+        return AppPage.mainMenu; // Store goes back to main menu
     }
   }
 

@@ -7,7 +7,6 @@ import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 import '../common/gradient_button.dart';
 import '../common/animated_counter.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/constants/game_constants.dart';
 import '../../../core/utils/responsive_utils.dart';
 import '../../../core/services/audio_service.dart';
 
@@ -146,12 +145,12 @@ class _PowerUpPanelState extends State<PowerUpPanel>
       gradient: AppTheme.surfaceGradient,
       borderRadius: BorderRadius.circular(16),
       border: Border.all(
-        color: AppTheme.primaryColor.withOpacity(0.3),
+        color: AppTheme.primaryColor.withValues(alpha:0.3),
         width: 1,
       ),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.2),
+          color: Colors.black.withValues(alpha:0.2),
           blurRadius: 10,
           offset: const Offset(0, 5),
         ),
@@ -274,21 +273,21 @@ class _PowerUpPanelState extends State<PowerUpPanel>
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          baseColor.withOpacity(isSelected ? 0.8 : 0.3),
-          baseColor.withOpacity(isSelected ? 0.6 : 0.1),
+          baseColor.withValues(alpha:isSelected ? 0.8 : 0.3),
+          baseColor.withValues(alpha:isSelected ? 0.6 : 0.1),
         ],
       ),
       borderRadius: BorderRadius.circular(12),
       border: Border.all(
         color: isSelected 
             ? baseColor
-            : baseColor.withOpacity(0.5),
+            : baseColor.withValues(alpha:0.5),
         width: isSelected ? 2 : 1,
       ),
       boxShadow: isAvailable && isSelected
           ? [
               BoxShadow(
-                color: baseColor.withOpacity(0.3),
+                color: baseColor.withValues(alpha:0.3),
                 blurRadius: 8,
                 offset: const Offset(0, 4),
               ),
@@ -328,7 +327,7 @@ class _PowerUpPanelState extends State<PowerUpPanel>
           width: ResponsiveUtils.wp(12),
           height: ResponsiveUtils.wp(12),
           decoration: BoxDecoration(
-            color: powerUp.color.withOpacity(0.2),
+            color: powerUp.color.withValues(alpha:0.2),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Center(
@@ -534,11 +533,11 @@ class _PowerUpUsageEffectState extends State<_PowerUpUsageEffect>
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: widget.powerUp.color.withOpacity(0.8),
+                      color: widget.powerUp.color.withValues(alpha:0.8),
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: widget.powerUp.color.withOpacity(0.5),
+                          color: widget.powerUp.color.withValues(alpha:0.5),
                           blurRadius: 20,
                           offset: const Offset(0, 0),
                         ),
@@ -594,7 +593,7 @@ class CompactPowerUpButton extends StatelessWidget {
       gradient: LinearGradient(
         colors: [
           powerUp.color,
-          powerUp.color.withOpacity(0.7),
+          powerUp.color.withValues(alpha:0.7),
         ],
       ),
       width: ResponsiveUtils.wp(16),

@@ -242,8 +242,8 @@ class _MainMenuPageState extends State<MainMenuPage>
                 center: Alignment.topLeft,
                 radius: 1.5,
                 colors: [
-                  AppColors.primary.withOpacity(0.1),
-                  AppColors.secondary.withOpacity(0.05),
+                  AppColors.primary.withValues(alpha:0.1),
+                  AppColors.secondary.withValues(alpha:0.05),
                   AppColors.darkBackground,
                 ],
               ),
@@ -281,7 +281,7 @@ class _MainMenuPageState extends State<MainMenuPage>
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.primary.withOpacity(0.3),
+                      color: AppColors.primary.withValues(alpha:0.3),
                       blurRadius: 20,
                       offset: const Offset(0, 10),
                     ),
@@ -321,7 +321,7 @@ class _MainMenuPageState extends State<MainMenuPage>
               'Puzzle Block Game',
               style: TextStyle(
                 fontSize: ResponsiveUtils.sp(4),
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha:0.7),
                 letterSpacing: 1,
               ),
             ),
@@ -368,7 +368,7 @@ class _MainMenuPageState extends State<MainMenuPage>
                       gradient: LinearGradient(
                         colors: [
                           AppColors.accent,
-                          AppColors.accent.withOpacity(0.8),
+                          AppColors.accent.withValues(alpha:0.8),
                         ],
                       ),
                       width: ResponsiveUtils.wp(60),
@@ -444,10 +444,10 @@ class _MainMenuPageState extends State<MainMenuPage>
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha:0.1),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha:0.2),
             width: 1,
           ),
         ),
@@ -492,13 +492,13 @@ class _MainMenuPageState extends State<MainMenuPage>
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      AppColors.warning.withOpacity(0.9),
-                      AppColors.warning.withOpacity(0.7),
+                      AppColors.warning.withValues(alpha:0.9),
+                      AppColors.warning.withValues(alpha:0.7),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha:0.2),
                     width: 1,
                   ),
                 ),
@@ -540,10 +540,10 @@ class _MainMenuPageState extends State<MainMenuPage>
           opacity: _buttonsAnimation.value,
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha:0.2),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha:0.3),
                 width: 1,
               ),
             ),
@@ -580,7 +580,7 @@ class _MainMenuPageState extends State<MainMenuPage>
                     width: 4,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.6),
+                      color: AppColors.primary.withValues(alpha:0.6),
                       shape: BoxShape.circle,
                     ),
                   ),

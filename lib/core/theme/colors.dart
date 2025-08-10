@@ -140,6 +140,16 @@ class AppColors {
   /// Transparent color
   static const Color transparent = Color(0x00000000);
 
+  /// Light theme shadow color with opacity
+  static final Color lightShadow = const Color(0xFF000000).withValues(alpha:0.12);
+  /// Dark theme shadow color with opacity
+  static final Color darkShadow = const Color(0xFF000000).withValues(alpha:0.5);
+  /// Light theme scrim color with opacity
+  static final Color lightScrim = const Color(0xFF000000).withValues(alpha:0.32);
+  /// Dark theme scrim color with opacity
+  static final Color darkScrim = const Color(0xFF000000).withValues(alpha:0.8);
+  
+
   // ========================================
   // GAME-SPECIFIC COLORS
   // ========================================

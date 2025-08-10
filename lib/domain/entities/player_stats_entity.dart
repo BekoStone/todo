@@ -137,6 +137,7 @@ class PlayerStats extends Equatable {
     required this.lastUpdated,
     this.lastLoginDate,
     this.lastGameDate,
+  
     
     // Core statistics
     this.totalGamesPlayed = 0,

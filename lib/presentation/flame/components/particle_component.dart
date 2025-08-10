@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/constants/game_constants.dart';
-import '../../../core/utils/performance_utils.dart';
+import '../../../core/utils/performance_utils.dart' hide Vector2;
 
 /// A Flame component for managing particle effects.
 /// Handles various game particle effects like explosions, sparkles, and celebrations.
@@ -256,7 +256,7 @@ class ParticleComponent extends PositionComponent with HasGameRef {
               Offset.zero,
               size,
               Paint()
-                ..color = _getParticleColor(random).withOpacity(1 - progress)
+                ..color = _getParticleColor(random).withValues(alpha:1 - progress)
                 ..blendMode = BlendMode.plus,
             );
           },
@@ -330,7 +330,7 @@ class ParticleComponent extends PositionComponent with HasGameRef {
                 child: CircleParticle(
                   radius: 6 + random.nextDouble() * 4,
                   paint: Paint()
-                    ..color = primaryColor.withOpacity(0.8)
+                    ..color = primaryColor.withValues(alpha:0.8)
                     ..blendMode = BlendMode.plus,
                 ),
               ),
@@ -362,7 +362,7 @@ class ParticleComponent extends PositionComponent with HasGameRef {
                   child: RectangleParticle(
                     size: Vector2.all(3),
                     paint: Paint()
-                      ..color = primaryColor.withOpacity(0.6),
+                      ..color = primaryColor.withValues(alpha:0.6),
                   ),
                 ),
               ),
@@ -547,7 +547,7 @@ class ParticleComponent extends PositionComponent with HasGameRef {
             child: CircleParticle(
               radius: 3 + random.nextDouble() * 2,
               paint: Paint()
-                ..color = primaryColor.withOpacity(0.7)
+                ..color = primaryColor.withValues(alpha:0.7)
                 ..blendMode = BlendMode.plus,
             ),
           ),

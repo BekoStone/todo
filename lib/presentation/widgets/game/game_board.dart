@@ -7,9 +7,7 @@ import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
 import 'dart:math' as math;
 import '../../flame/box_hooks_game.dart';
 import '../../flame/components/block_component.dart' as flame_block;
-import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/game_constants.dart';
-import '../../../core/utils/responsive_utils.dart';
 import '../../../core/utils/performance_utils.dart';
 
 class GameBoard extends StatefulWidget {
@@ -223,7 +221,7 @@ class _GameBoardState extends State<GameBoard>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha:0.3),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -256,7 +254,7 @@ class _GameBoardState extends State<GameBoard>
     return GridView.builder(
       physics: const NeverScrollableScrollPhysics(),
       itemCount: GameConstants.defaultGridSize * GameConstants.defaultGridSize,
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: GameConstants.defaultGridSize,
         childAspectRatio: 1.0,
       ),
@@ -301,7 +299,7 @@ class _GameBoardState extends State<GameBoard>
           ),
           boxShadow: isOccupied ? [
             BoxShadow(
-              color: Colors.black.withOpacity(0.2),
+              color: Colors.black.withValues(alpha:0.2),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
@@ -326,7 +324,7 @@ class _GameBoardState extends State<GameBoard>
           end: Alignment.bottomRight,
           colors: [
             block.color,
-            block.color.withOpacity(0.7),
+            block.color.withValues(alpha:0.7),
           ],
         ),
       ),
@@ -352,14 +350,14 @@ class _GameBoardState extends State<GameBoard>
 
   Color _getCellColor(bool isOccupied, BlockEntity? block, bool isAnimating) {
     if (isAnimating) {
-      return Colors.white.withOpacity(0.8);
+      return Colors.white.withValues(alpha:0.8);
     }
     
     if (isOccupied && block != null) {
-      return block.color.withOpacity(0.1);
+      return block.color.withValues(alpha:0.1);
     }
     
-    return Colors.white.withOpacity(0.05);
+    return Colors.white.withValues(alpha:0.05);
   }
 
   Color _getBorderColor(int row, int col) {
@@ -367,7 +365,7 @@ class _GameBoardState extends State<GameBoard>
       return _isValidPlacement ? Colors.green : Colors.red;
     }
     
-    return Colors.white.withOpacity(0.1);
+    return Colors.white.withValues(alpha:0.1);
   }
 
   BlockEntity? _getCellBlock(GameState state, int row, int col) {

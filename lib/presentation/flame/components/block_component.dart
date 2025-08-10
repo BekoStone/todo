@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/constants/game_constants.dart';
-import '../../../core/utils/performance_utils.dart';
+import '../../../core/utils/performance_utils.dart' hide Vector2;
 
 /// A Flame component representing a game block.
 /// Handles rendering, animation, and user interaction for blocks.
@@ -97,7 +97,7 @@ class BlockComponent extends PositionComponent with DragCallbacks, TapCallbacks,
       size: size + Vector2.all(GameConstants.blockShadowOffset),
       position: Vector2.all(GameConstants.blockShadowOffset / 2),
       paint: Paint()
-        ..color = AppColors.shadow.withOpacity(0.3)
+        ..color = AppColors.shadow.withValues(alpha:0.3)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
     );
     
@@ -112,7 +112,7 @@ class BlockComponent extends PositionComponent with DragCallbacks, TapCallbacks,
       size: size + Vector2.all(GameConstants.blockHighlightWidth * 2),
       position: Vector2.all(-GameConstants.blockHighlightWidth),
       paint: Paint()
-        ..color = AppColors.accent.withOpacity(0.6)
+        ..color = AppColors.accent.withValues(alpha:0.6)
         ..style = PaintingStyle.stroke
         ..strokeWidth = GameConstants.blockHighlightWidth,
     );
@@ -166,7 +166,7 @@ class BlockComponent extends PositionComponent with DragCallbacks, TapCallbacks,
       position: cellPosition + Vector2.all(GameConstants.blockBorderWidth),
       size: Vector2.all(cellSize - GameConstants.blockBorderWidth * 2),
       paint: Paint()
-        ..color = Colors.white.withOpacity(0.2)
+        ..color = Colors.white.withValues(alpha:0.2)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.0,
     );
@@ -189,9 +189,9 @@ class BlockComponent extends PositionComponent with DragCallbacks, TapCallbacks,
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
       colors: [
-        baseColor.withOpacity(0.9),
+        baseColor.withValues(alpha:0.9),
         baseColor,
-        baseColor.withOpacity(0.7),
+        baseColor.withValues(alpha:0.7),
       ],
       stops: const [0.0, 0.5, 1.0],
     ).createShader(Rect.fromLTWH(0, 0, cellSize, cellSize));
@@ -202,11 +202,11 @@ class BlockComponent extends PositionComponent with DragCallbacks, TapCallbacks,
     if (isSelected) {
       return AppColors.accent;
     } else if (_isHighlighted) {
-      return AppColors.accent.withOpacity(0.8);
+      return AppColors.accent.withValues(alpha:0.8);
     } else if (isPlaced) {
-      return Colors.white.withOpacity(0.3);
+      return Colors.white.withValues(alpha:0.3);
     } else {
-      return Colors.white.withOpacity(0.6);
+      return Colors.white.withValues(alpha:0.6);
     }
   }
 

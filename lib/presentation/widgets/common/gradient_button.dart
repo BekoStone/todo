@@ -177,9 +177,9 @@ class _GradientButtonState extends State<GradientButton>
             widget.borderRadius ?? AppConstants.buttonBorderRadius,
           ),
           splashColor: widget.splashColor ?? 
-              (widget.textColor ?? theme.colorScheme.onPrimary).withOpacity(0.3),
+              (widget.textColor ?? theme.colorScheme.onPrimary).withValues(alpha:0.3),
           highlightColor: (widget.textColor ?? theme.colorScheme.onPrimary)
-              .withOpacity(0.1),
+              .withValues(alpha:0.1),
           child: _buildContent(theme, isEnabled),
         ),
       ),
@@ -198,7 +198,7 @@ class _GradientButtonState extends State<GradientButton>
       }
     } else {
       backgroundColor = (widget.backgroundColor ?? theme.colorScheme.primary)
-          .withOpacity(0.3);
+          .withValues(alpha:0.3);
     }
 
     // Apply hover effect
@@ -224,7 +224,7 @@ class _GradientButtonState extends State<GradientButton>
   Widget _buildContent(ThemeData theme, bool isEnabled) {
     final textColor = isEnabled
         ? (widget.textColor ?? theme.colorScheme.onPrimary)
-        : (widget.textColor ?? theme.colorScheme.onPrimary).withOpacity(0.5);
+        : (widget.textColor ?? theme.colorScheme.onPrimary).withValues(alpha:0.5);
 
     final padding = widget.padding ?? 
         (widget.isCompact 

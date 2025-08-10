@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:puzzle_box/core/theme/colors.dart';
 import 'package:puzzle_box/domain/entities/block_entity.dart';
 import 'dart:math' as math;
-import '../../flame/components/block_component.dart' as flame_block;
 import '../../../core/theme/app_theme.dart';
-import '../../../core/constants/game_constants.dart';
 import '../../../core/utils/responsive_utils.dart';
 
 class BlockSlot extends StatefulWidget {
@@ -261,34 +258,34 @@ class _BlockSlotState extends State<BlockSlot>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              AppColors.secondary.withOpacity(0.3),
-              AppColors.secondary.withOpacity(0.1),
+              AppColors.secondary.withValues(alpha:0.3),
+              AppColors.secondary.withValues(alpha:0.1),
             ],
           )
         : LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Colors.white.withOpacity(0.1),
-              Colors.white.withOpacity(0.05),
+              Colors.white.withValues(alpha:0.1),
+              Colors.white.withValues(alpha:0.05),
             ],
           ),
       borderRadius: BorderRadius.circular(12),
       border: Border.all(
         color: hasBlock 
-          ? AppColors.secondary.withOpacity(0.5)
-          : Colors.white.withOpacity(0.2),
+          ? AppColors.secondary.withValues(alpha:0.5)
+          : Colors.white.withValues(alpha:0.2),
         width: 2,
       ),
       boxShadow: hasBlock ? [
         BoxShadow(
-          color: AppColors.secondary.withOpacity(0.3),
+          color: AppColors.secondary.withValues(alpha:0.3),
           blurRadius: 8,
           offset: const Offset(0, 4),
         ),
       ] : [
         BoxShadow(
-          color: Colors.black.withOpacity(0.1),
+          color: Colors.black.withValues(alpha:0.1),
           blurRadius: 4,
           offset: const Offset(0, 2),
         ),
@@ -316,12 +313,12 @@ class _BlockSlotState extends State<BlockSlot>
         width: slotSize * 0.3,
         height: slotSize * 0.3,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.3),
+          color: Colors.white.withValues(alpha:0.3),
           shape: BoxShape.circle,
         ),
         child: Icon(
           Icons.add,
-          color: Colors.white.withOpacity(0.6),
+          color: Colors.white.withValues(alpha:0.6),
           size: slotSize * 0.15,
         ),
       ),
@@ -357,7 +354,7 @@ class _BlockSlotState extends State<BlockSlot>
           decoration: BoxDecoration(
             gradient: RadialGradient(
               colors: [
-                Colors.white.withOpacity(0.3 * _shimmerAnimation.value),
+                Colors.white.withValues(alpha:0.3 * _shimmerAnimation.value),
                 Colors.transparent,
               ],
             ),
@@ -391,12 +388,12 @@ class _BlockSlotState extends State<BlockSlot>
                   end: Alignment.bottomRight,
                   colors: [
                     block.color,
-                    block.color.withOpacity(0.7),
+                    block.color.withValues(alpha:0.7),
                   ],
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: block.color.withOpacity(0.3),
+                    color: block.color.withValues(alpha:0.3),
                     blurRadius: 2,
                     offset: const Offset(0, 1),
                   ),
@@ -539,7 +536,7 @@ class BlockSlotRow extends StatelessWidget {
         gradient: AppTheme.surfaceGradient,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha:0.1),
           width: 1,
         ),
       ),

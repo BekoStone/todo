@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/constants/game_constants.dart';
-import '../../../core/utils/performance_utils.dart';
+import '../../../core/utils/performance_utils.dart' hide Vector2;
 import 'block_component.dart';
 
 /// A Flame component representing the game grid.
@@ -112,7 +112,7 @@ class GridComponent extends PositionComponent with TapCallbacks, HasGameRef {
       size: size + Vector2.all(GameConstants.gridBorderWidth),
       position: Vector2.all(-GameConstants.gridBorderWidth / 2),
       paint: Paint()
-        ..color = AppColors.primary.withOpacity(0.8)
+        ..color = AppColors.primary.withValues(alpha:0.8)
         ..style = PaintingStyle.stroke
         ..strokeWidth = GameConstants.gridBorderWidth,
     );
@@ -184,7 +184,7 @@ class GridComponent extends PositionComponent with TapCallbacks, HasGameRef {
       position: cellPosition,
       size: Vector2.all(cellSize),
       paint: Paint()
-        ..color = AppColors.accent.withOpacity(0.4)
+        ..color = AppColors.accent.withValues(alpha:0.4)
         ..style = PaintingStyle.fill,
     );
     
@@ -228,9 +228,9 @@ class GridComponent extends PositionComponent with TapCallbacks, HasGameRef {
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
       colors: [
-        AppColors.surface.withOpacity(0.8),
-        AppColors.surface.withOpacity(0.6),
-        AppColors.surface.withOpacity(0.4),
+        AppColors.surface.withValues(alpha:0.8),
+        AppColors.surface.withValues(alpha:0.6),
+        AppColors.surface.withValues(alpha:0.4),
       ],
       stops: const [0.0, 0.5, 1.0],
     ).createShader(Rect.fromLTWH(
@@ -247,20 +247,20 @@ class GridComponent extends PositionComponent with TapCallbacks, HasGameRef {
     final isEvenCell = (row + col) % 2 == 0;
     
     if (_occupiedCells[row][col]) {
-      return AppColors.secondary.withOpacity(0.8);
+      return AppColors.secondary.withValues(alpha:0.8);
     } else if (isEvenCell) {
-      return AppColors.surface.withOpacity(0.3);
+      return AppColors.surface.withValues(alpha:0.3);
     } else {
-      return AppColors.surface.withOpacity(0.2);
+      return AppColors.surface.withValues(alpha:0.2);
     }
   }
 
   /// Get border color for a specific cell
   Color _getCellBorderColor(int row, int col) {
     if (_occupiedCells[row][col]) {
-      return AppColors.accent.withOpacity(0.6);
+      return AppColors.accent.withValues(alpha:0.6);
     } else {
-      return AppColors.onSurface.withOpacity(0.1);
+      return AppColors.onSurface.withValues(alpha:0.1);
     }
   }
 
@@ -594,7 +594,7 @@ class GridComponent extends PositionComponent with TapCallbacks, HasGameRef {
     _gridBackground.paint.shader = _createGridBackgroundGradient();
     
     // Update border
-    _gridBorder.paint.color = AppColors.primary.withOpacity(0.8);
+    _gridBorder.paint.color = AppColors.primary.withValues(alpha:0.8);
     
     // Update cell colors
     for (int row = 0; row < gridSize; row++) {

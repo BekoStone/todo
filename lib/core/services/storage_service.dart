@@ -232,7 +232,7 @@ class StorageService {
           final decoded = jsonDecode(value);
           if (decoded is T) {
             result = decoded;
-          } else if (T == Map<String, dynamic> && decoded is Map) {
+          } else if (T is Map<String, dynamic> && decoded is Map) {
             result = Map<String, dynamic>.from(decoded) as T;
           }
         } catch (e) {
@@ -326,7 +326,7 @@ class StorageService {
   }
 
   /// Load player statistics
-  Map<String, dynamic>? getPlayerStats() {
+  Map<String, dynamic>? loadPlayerStats() {
     return getValue<Map<String, dynamic>>(AppConstants.playerStatsKey);
   }
 

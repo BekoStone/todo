@@ -52,7 +52,7 @@ class PlayerUseCases {
   /// Get current player statistics with caching
   Future<PlayerStats?> getCurrentPlayerStats() async {
     try {
-      return await _repository.getPlayerStats();
+      return await _repository.loadPlayerStats();
     } catch (e) {
       debugPrint('Failed to get current player stats: $e');
       return null;
@@ -451,7 +451,7 @@ class PlayerUseCases {
 
       return {
         'totalScore': stats.totalScore,
-        'bestScore': stats.bestScore,
+        'bestScore': stats.highScore,
         'averageScore': recentScores.isNotEmpty 
           ? recentScores.reduce((a, b) => a + b) / recentScores.length 
           : 0.0,
@@ -464,7 +464,7 @@ class PlayerUseCases {
         'playStreak': playStreak,
         'achievementsUnlocked': achievements.length,
         'powerUpsOwned': powerUps.values.fold<int>(0, (sum, count) => sum + count),
-        'perfectClears': stats.perfectClears,
+        'perfectClears': stats.totalPerfectClears,
         'bestCombo': stats.bestCombo,
         'bestStreak': stats.bestStreak,
         'currentLevel': stats.currentLevel,

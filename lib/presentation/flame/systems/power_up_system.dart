@@ -8,7 +8,7 @@ import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 
 import '../../../core/constants/game_constants.dart';
-import '../../../core/utils/performance_utils.dart';
+import '../../../core/utils/performance_utils.dart' hide Vector2;
 import '../../../core/services/audio_service.dart';
 import '../../../injection_container.dart';
 import '../components/game_world.dart';
@@ -131,13 +131,13 @@ class PowerUpSystem extends Component with HasGameRef {
       uses: 1,
     ));
     
-    _registerPowerUp(PowerUp(
+    _registerPowerUp(const PowerUp(
       id: 'magnet',
       name: 'Magnet',
       description: 'Automatically place blocks optimally',
       icon: 'magnet',
       rarity: PowerUpRarity.legendary,
-      cooldown: const Duration(seconds: 300),
+      cooldown: Duration(seconds: 300),
       uses: 1,
     ));
     

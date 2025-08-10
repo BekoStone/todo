@@ -6,6 +6,7 @@ import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
 import '../widgets/common/animated_counter.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/colors.dart';
+import '../../injection_container.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -17,20 +18,31 @@ class SplashPage extends StatefulWidget {
 class _SplashPageState extends State<SplashPage>
     with TickerProviderStateMixin {
   
+  // Animation controllers - CRITICAL: Must be disposed properly
   late AnimationController _logoController;
   late AnimationController _particleController;
   late AnimationController _progressController;
+  late AnimationController _textController;
+  late AnimationController _backgroundController;
   
+  // Animations
   late Animation<double> _logoScale;
   late Animation<double> _logoRotation;
   late Animation<Offset> _logoSlide;
   late Animation<double> _particleOpacity;
   late Animation<double> _progressValue;
+  late Animation<double> _textFade;
+  late Animation<double> _backgroundGradient;
   
+  // State tracking
   bool _assetsLoaded = false;
+  bool _isDisposed = false;
   double _loadingProgress = 0.0;
   String _loadingStatus = 'Initializing...';
   final List<String> _loadingSteps = [];
+  
+  // Loading timer
+  Timer? _loadingTimer;
 
   @override
   void initState() {
@@ -41,9 +53,18 @@ class _SplashPageState extends State<SplashPage>
 
   @override
   void dispose() {
+    _isDisposed = true;
+    
+    // CRITICAL: Dispose all animation controllers to prevent memory leaks
     _logoController.dispose();
     _particleController.dispose();
     _progressController.dispose();
+    _textController.dispose();
+    _backgroundController.dispose();
+    
+    // Cancel loading timer
+    _loadingTimer?.cancel();
+    
     super.dispose();
   }
 
@@ -63,6 +84,18 @@ class _SplashPageState extends State<SplashPage>
     // Progress animation controller
     _progressController = AnimationController(
       duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    
+    // Text animation controller
+    _textController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    );
+    
+    // Background animation controller
+    _backgroundController = AnimationController(
+      duration: const Duration(seconds: 3),
       vsync: this,
     );
 
@@ -106,441 +139,432 @@ class _SplashPageState extends State<SplashPage>
       parent: _progressController,
       curve: Curves.easeInOut,
     ));
+    
+    _textFade = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _textController,
+      curve: Curves.easeInOut,
+    ));
+    
+    _backgroundGradient = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _backgroundController,
+      curve: Curves.easeInOut,
+    ));
   }
 
   void _startLoadingSequence() async {
-    // Start logo animation
-    _logoController.forward();
+    if (_isDisposed) return;
     
-    // Start particle animation after a delay
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) {
+    try {
+      // Start background animation
+      _backgroundController.forward();
+      
+      // Start logo animation after brief delay
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (!_isDisposed) {
+        _logoController.forward();
         _particleController.forward();
       }
-    });
-
-    // Initialize app components
-    await _initializeApp();
-  }
-
-  Future<void> _initializeApp() async {
-    try {
-      // Step 1: Initialize dependency injection
-      await _updateProgress(0.1, 'Setting up dependencies...');
-      await Future.delayed(const Duration(milliseconds: 300));
       
-      // Step 2: Initialize storage
-      await _updateProgress(0.3, 'Loading player data...');
-      await Future.delayed(const Duration(milliseconds: 400));
-      
-      // Step 3: Initialize audio
-      await _updateProgress(0.5, 'Preparing audio system...');
-      await Future.delayed(const Duration(milliseconds: 300));
-      
-      // Step 4: Load game assets
-      await _updateProgress(0.7, 'Loading game assets...');
+      // Start text animation
       await Future.delayed(const Duration(milliseconds: 500));
-      
-      // Step 5: Initialize game engine
-      await _updateProgress(0.9, 'Starting game engine...');
-      await Future.delayed(const Duration(milliseconds: 400));
-      
-      // Step 6: Complete initialization
-      await _updateProgress(1.0, 'Ready to play!');
-      await Future.delayed(const Duration(milliseconds: 300));
-      
-      _assetsLoaded = true;
-      
-      // Navigate to main menu after successful loading
-      if (mounted) {
-        context.read<UICubit>().navigateToPage(AppPage.mainMenu);
+      if (!_isDisposed) {
+        _textController.forward();
       }
       
-    } catch (e) {
-      debugPrint('❌ Failed to initialize app: $e');
-      await _updateProgress(0.0, 'Failed to load. Retrying...');
+      // Start loading process
+      await _loadAssets();
       
-      // Retry after a delay
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) {
-          _startLoadingSequence();
-        }
-      });
+      // Complete loading and navigate
+      if (!_isDisposed) {
+        await _completeLoading();
+      }
+    } catch (e) {
+      _handleLoadingError(e);
     }
   }
 
-  Future<void> _updateProgress(double progress, String status) async {
-    if (!mounted) return;
+  Future<void> _loadAssets() async {
+    if (_isDisposed) return;
+    
+    final steps = [
+      'Loading game engine...',
+      'Initializing dependencies...',
+      'Loading assets...',
+      'Setting up state management...',
+      'Preparing game world...',
+      'Finalizing setup...',
+    ];
+    
+    for (int i = 0; i < steps.length; i++) {
+      if (_isDisposed) return;
+      
+      setState(() {
+        _loadingStatus = steps[i];
+        _loadingProgress = (i + 1) / steps.length;
+      });
+      
+      // Animate progress bar
+      _progressController.animateTo(_loadingProgress);
+      
+      // Simulate loading time with actual work
+      switch (i) {
+        case 0:
+          // Initialize core systems
+          await Future.delayed(const Duration(milliseconds: 300));
+          break;
+        case 1:
+          // Initialize dependency injection
+          await _initializeDependencies();
+          break;
+        case 2:
+          // Load assets
+          await _loadGameAssets();
+          break;
+        case 3:
+          // Setup state management
+          await _initializeStateManagement();
+          break;
+        case 4:
+          // Prepare game world
+          await Future.delayed(const Duration(milliseconds: 200));
+          break;
+        case 5:
+          // Final setup
+          await Future.delayed(const Duration(milliseconds: 200));
+          break;
+      }
+    }
     
     setState(() {
-      _loadingProgress = progress;
-      _loadingStatus = status;
-      _loadingSteps.add(status);
-      
-      // Keep only the last 3 steps
-      if (_loadingSteps.length > 3) {
-        _loadingSteps.removeAt(0);
+      _assetsLoaded = true;
+    });
+  }
+
+  Future<void> _initializeDependencies() async {
+    try {
+      if (!getIt.isRegistered<UICubit>()) {
+        await initializeApp();
       }
+    } catch (e) {
+      print('Dependency initialization error: $e');
+      // Continue with fallback
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+  }
+
+  Future<void> _loadGameAssets() async {
+    // Simulate asset loading
+    await Future.delayed(const Duration(milliseconds: 400));
+    
+    // Preload critical UI components
+    if (mounted) {
+      precacheImage(const AssetImage('assets/images/logo.png'), context);
+    }
+  }
+
+  Future<void> _initializeStateManagement() async {
+    try {
+      await initializeStateManagement();
+    } catch (e) {
+      print('State management initialization error: $e');
+      // Continue with fallback
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+  }
+
+  Future<void> _completeLoading() async {
+    if (_isDisposed) return;
+    
+    // Final animation sequence
+    await Future.delayed(const Duration(milliseconds: 500));
+    
+    if (!_isDisposed && mounted) {
+      // Navigate to main menu
+      context.read<UICubit>().navigateToPage(AppPage.mainMenu);
+    }
+  }
+
+  void _handleLoadingError(dynamic error) {
+    if (_isDisposed) return;
+    
+    setState(() {
+      _loadingStatus = 'Loading failed. Retrying...';
     });
     
-    // Animate progress bar
-    _progressController.reset();
-    _progressController.forward();
+    print('Splash loading error: $error');
+    
+    // Retry after delay
+    _loadingTimer = Timer(const Duration(seconds: 2), () {
+      if (!_isDisposed) {
+        _startLoadingSequence();
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<UICubit, UIState>(
-      builder: (context, uiState) {
-        return Scaffold(
-          body: Container(
-            decoration: const BoxDecoration(
+    return Scaffold(
+      backgroundColor: AppColors.darkBackground,
+      body: AnimatedBuilder(
+        animation: Listenable.merge([
+          _logoScale,
+          _logoRotation,
+          _logoSlide,
+          _particleOpacity,
+          _progressValue,
+          _textFade,
+          _backgroundGradient,
+        ]),
+        builder: (context, child) {
+          return Container(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
                   AppColors.darkBackground,
+                  Color.lerp(AppColors.darkBackground, AppColors.primary.withValues(alpha:0.1), _backgroundGradient.value)!,
                   AppColors.darkSurface,
-                  AppColors.darkSurfaceVariant,
                 ],
               ),
             ),
-            child: SafeArea(
-              child: Stack(
-                children: [
-                  // Background particles
-                  _buildBackgroundParticles(),
-                  
-                  // Main content
-                  Column(
+            child: Stack(
+              children: [
+                // Particle effects background
+                _buildParticleBackground(),
+                
+                // Main content
+                Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       // Logo section
-                      Expanded(
-                        flex: 4,
-                        child: Center(
-                          child: _buildLogo(),
-                        ),
-                      ),
+                      _buildLogo(),
+                      
+                      SizedBox(height: MediaQuery.of(context).size.height * 0.1),
                       
                       // Loading section
-                      Expanded(
-                        flex: 3,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 32),
-                          child: Column(
-                            children: [
-                              // Loading progress
-                              _buildLoadingProgress(),
-                              
-                              const SizedBox(height: 24),
-                              
-                              // Loading status
-                              _buildLoadingStatus(),
-                              
-                              const SizedBox(height: 16),
-                              
-                              // Loading steps (debug info)
-                              if (uiState.showDebugInfo) _buildLoadingSteps(),
-                            ],
-                          ),
-                        ),
-                      ),
-                      
-                      // Footer
-                      const Spacer(flex: 1),
-                      _buildFooter(),
-                      const SizedBox(height: 32),
+                      _buildLoadingSection(),
                     ],
                   ),
-                ],
-              ),
+                ),
+                
+                // Version info
+                _buildVersionInfo(),
+              ],
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildBackgroundParticles() {
-    return AnimatedBuilder(
-      animation: _particleOpacity,
-      builder: (context, child) {
-        return Opacity(
-          opacity: _particleOpacity.value,
-          child: Stack(
-            children: List.generate(15, (index) {
-              return _buildParticle(index);
-            }),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildParticle(int index) {
-    final screenSize = MediaQuery.of(context).size;
-    final random = index * 97; // Pseudo-random based on index
-    
-    final x = ((random * 7) % 100) / 100 * screenSize.width;
-    final y = ((random * 11) % 100) / 100 * screenSize.height;
-    final size = 4.0 + ((random * 13) % 8);
-    final color = AppColors.particleColors[index % AppColors.particleColors.length];
-    
-    return Positioned(
-      left: x,
-      top: y,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.6),
-          borderRadius: BorderRadius.circular(size / 2),
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(0.3),
-              blurRadius: 4,
-              spreadRadius: 1,
-            ),
-          ],
+  Widget _buildParticleBackground() {
+    return Positioned.fill(
+      child: Opacity(
+        opacity: _particleOpacity.value * 0.3,
+        child: CustomPaint(
+          painter: ParticleBackgroundPainter(_particleController.value),
         ),
       ),
     );
   }
 
   Widget _buildLogo() {
-    return AnimatedBuilder(
-      animation: Listenable.merge([_logoScale, _logoSlide, _logoRotation]),
-      builder: (context, child) {
-        return SlideTransition(
-          position: _logoSlide,
-          child: Transform.scale(
-            scale: _logoScale.value,
-            child: Transform.rotate(
-              angle: _logoRotation.value,
-              child: Container(
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(32),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.2),
-                    width: 2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // App icon/logo
-                    Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            AppColors.primary,
-                            AppColors.secondary,
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.primary.withOpacity(0.3),
-                            blurRadius: 10,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.extension_rounded,
-                        color: Colors.white,
-                        size: 40,
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 16),
-                    
-                    // App name
-                    const Text(
-                      AppConstants.appName,
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 8),
-                    
-                    // Tagline
-                    Text(
-                      'Puzzle Your Way to Victory',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.white.withOpacity(0.7),
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ],
-                ),
+    return SlideTransition(
+      position: _logoSlide,
+      child: Transform.scale(
+        scale: _logoScale.value,
+        child: Transform.rotate(
+          angle: _logoRotation.value,
+          child: Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              gradient: const RadialGradient(
+                colors: [
+                  AppColors.primary,
+                  AppColors.secondary,
+                ],
               ),
+              borderRadius: BorderRadius.circular(30),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha:0.4),
+                  blurRadius: 30,
+                  offset: const Offset(0, 15),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.apps,
+              size: 60,
+              color: Colors.white,
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
-  Widget _buildLoadingProgress() {
+  Widget _buildLoadingSection() {
     return Column(
       children: [
-        // Progress bar
-        Container(
-          width: double.infinity,
-          height: 6,
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(3),
-          ),
-          child: AnimatedBuilder(
-            animation: _progressValue,
-            builder: (context, child) {
-              return FractionallySizedBox(
-                alignment: Alignment.centerLeft,
-                widthFactor: _loadingProgress * _progressValue.value,
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [
-                        AppColors.primary,
-                        AppColors.secondary,
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(3),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary.withOpacity(0.5),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+        // App title
+        FadeTransition(
+          opacity: _textFade,
+          child: const Text(
+            AppConstants.appName,
+            style: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              letterSpacing: 2,
+            ),
           ),
         ),
         
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         
-        // Progress percentage
-        AnimatedCounter(
-          value: (_loadingProgress * 100).round(),
-          suffix: '%',
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
+        // Subtitle
+        FadeTransition(
+          opacity: _textFade,
+          child: Text(
+            'Puzzle Block Game',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.white.withValues(alpha:0.7),
+              letterSpacing: 1,
+            ),
           ),
         ),
+        
+        const SizedBox(height: 40),
+        
+        // Progress section
+        _buildProgressSection(),
       ],
     );
   }
 
-  Widget _buildLoadingStatus() {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      child: Text(
-        _loadingStatus,
-        key: ValueKey(_loadingStatus),
-        style: const TextStyle(
-          fontSize: 16,
-          color: Colors.white70,
-          fontWeight: FontWeight.w500,
-        ),
-        textAlign: TextAlign.center,
-      ),
-    );
-  }
-
-  Widget _buildLoadingSteps() {
+  Widget _buildProgressSection() {
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.1),
-          width: 1,
-        ),
-      ),
+      width: MediaQuery.of(context).size.width * 0.7,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Loading Steps:',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: Colors.white70,
+          // Loading status text
+          FadeTransition(
+            opacity: _textFade,
+            child: Text(
+              _loadingStatus,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.white,
+              ),
+              textAlign: TextAlign.center,
             ),
           ),
-          const SizedBox(height: 8),
-          ..._loadingSteps.map((step) => Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.check_circle_outline,
-                  size: 16,
-                  color: AppColors.success,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    step,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Colors.white60,
+          
+          const SizedBox(height: 20),
+          
+          // Progress bar
+          FadeTransition(
+            opacity: _textFade,
+            child: Container(
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha:0.2),
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: _progressValue.value,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppColors.primary, AppColors.secondary],
                     ),
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-              ],
+              ),
             ),
-          )),
+          ),
+          
+          const SizedBox(height: 10),
+          
+          // Progress percentage
+          FadeTransition(
+            opacity: _textFade,
+            child: AnimatedCounter(
+              count: (_loadingProgress * 100).round(),
+              duration: const Duration(milliseconds: 300),
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withValues(alpha:0.8),
+              ),
+              suffix: '%',
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildFooter() {
-    return Column(
-      children: [
-        Text(
+  Widget _buildVersionInfo() {
+    return Positioned(
+      bottom: 30,
+      left: 0,
+      right: 0,
+      child: FadeTransition(
+        opacity: _textFade,
+        child: Text(
           'Version ${AppConstants.appVersion}',
           style: TextStyle(
             fontSize: 12,
-            color: Colors.white.withOpacity(0.5),
+            color: Colors.white.withValues(alpha:0.5),
           ),
+          textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 8),
-        Text(
-          '© ${DateTime.now().year} ${AppConstants.developerName}',
-          style: TextStyle(
-            fontSize: 10,
-            color: Colors.white.withOpacity(0.3),
-          ),
-        ),
-      ],
+      ),
     );
+  }
+}
+
+/// Custom painter for animated particle background
+class ParticleBackgroundPainter extends CustomPainter {
+  final double animationValue;
+  
+  ParticleBackgroundPainter(this.animationValue);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppColors.primary.withValues(alpha:0.3)
+      ..style = PaintingStyle.fill;
+
+    // Create animated particles
+    for (int i = 0; i < 20; i++) {
+      final x = (size.width / 20) * i + (animationValue * 50) % size.width;
+      final y = (size.height / 4) * (i % 4) + (animationValue * 30) % (size.height / 2);
+      final radius = 2 + (animationValue * 3) % 5;
+      
+      canvas.drawCircle(
+        Offset(x, y),
+        radius,
+        paint..color = AppColors.primary.withValues(alpha:0.1 + (animationValue * 0.2)),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(ParticleBackgroundPainter oldDelegate) {
+    return oldDelegate.animationValue != animationValue;
   }
 }

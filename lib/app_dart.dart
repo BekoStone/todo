@@ -304,7 +304,7 @@ class _PerformanceOverlayState extends State<_PerformanceOverlay>
         width: _isExpanded ? 200 : 60,
         height: _isExpanded ? 120 : 60,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.7),
+          color: Colors.black.withValues(alpha:0.7),
           borderRadius: BorderRadius.circular(8),
         ),
         padding: const EdgeInsets.all(8),

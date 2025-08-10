@@ -134,7 +134,7 @@ class _AchievementOverlayState extends State<AchievementOverlay>
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.black.withOpacity(0.85),
+      color: Colors.black.withValues(alpha:0.85),
       child: Stack(
         children: [
           // Particle background for newly unlocked achievements
@@ -220,22 +220,22 @@ class _AchievementOverlayState extends State<AchievementOverlay>
         end: Alignment.bottomRight,
         colors: [
           AppTheme.surfaceColor,
-          AppTheme.surfaceColor.withOpacity(0.95),
+          AppTheme.surfaceColor.withValues(alpha:0.95),
         ],
       ),
       borderRadius: BorderRadius.circular(20),
       border: Border.all(
-        color: widget.achievement.rarity.color.withOpacity(0.5),
+        color: widget.achievement.rarity.color.withValues(alpha:0.5),
         width: 2,
       ),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.3),
+          color: Colors.black.withValues(alpha:0.3),
           blurRadius: 20,
           offset: const Offset(0, 10),
         ),
         BoxShadow(
-          color: widget.achievement.rarity.color.withOpacity(0.2),
+          color: widget.achievement.rarity.color.withValues(alpha:0.2),
           blurRadius: 30,
           offset: const Offset(0, 0),
         ),
@@ -250,8 +250,8 @@ class _AchievementOverlayState extends State<AchievementOverlay>
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            widget.achievement.rarity.color.withOpacity(0.8),
-            widget.achievement.rarity.color.withOpacity(0.6),
+            widget.achievement.rarity.color.withValues(alpha:0.8),
+            widget.achievement.rarity.color.withValues(alpha:0.6),
           ],
         ),
         borderRadius: const BorderRadius.only(
@@ -276,7 +276,7 @@ class _AchievementOverlayState extends State<AchievementOverlay>
               vertical: ResponsiveUtils.hp(0.5),
             ),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha:0.2),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
@@ -306,19 +306,19 @@ class _AchievementOverlayState extends State<AchievementOverlay>
               gradient: RadialGradient(
                 colors: [
                   widget.achievement.rarity.color,
-                  widget.achievement.rarity.color.withOpacity(0.7),
-                  widget.achievement.rarity.color.withOpacity(0.3),
+                  widget.achievement.rarity.color.withValues(alpha:0.7),
+                  widget.achievement.rarity.color.withValues(alpha:0.3),
                 ],
                 stops: const [0.3, 0.7, 1.0],
               ),
               borderRadius: BorderRadius.circular(ResponsiveUtils.wp(12)),
               border: Border.all(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha:0.3),
                 width: 3,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: widget.achievement.rarity.color.withOpacity(0.5),
+                  color: widget.achievement.rarity.color.withValues(alpha:0.5),
                   blurRadius: 20,
                   offset: const Offset(0, 0),
                 ),
@@ -369,10 +369,10 @@ class _AchievementOverlayState extends State<AchievementOverlay>
                 vertical: ResponsiveUtils.hp(0.5),
               ),
               decoration: BoxDecoration(
-                color: AppTheme.successColor.withOpacity(0.2),
+                color: AppTheme.successColor.withValues(alpha:0.2),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: AppTheme.successColor.withOpacity(0.5),
+                  color: AppTheme.successColor.withValues(alpha:0.5),
                   width: 1,
                 ),
               ),
@@ -410,10 +410,10 @@ class _AchievementOverlayState extends State<AchievementOverlay>
       child: Container(
         padding: EdgeInsets.all(ResponsiveUtils.wp(4)),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha:0.1),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha:0.2),
             width: 1,
           ),
         ),
@@ -453,7 +453,7 @@ class _AchievementOverlayState extends State<AchievementOverlay>
             SizedBox(height: ResponsiveUtils.hp(1)),
             LinearProgressIndicator(
               value: widget.achievement.progressPercentage,
-              backgroundColor: Colors.white.withOpacity(0.2),
+              backgroundColor: Colors.white.withValues(alpha:0.2),
               valueColor: AlwaysStoppedAnimation<Color>(
                 widget.achievement.rarity.color,
               ),
@@ -481,13 +481,13 @@ class _AchievementOverlayState extends State<AchievementOverlay>
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              AppTheme.secondaryColor.withOpacity(0.3),
-              AppTheme.secondaryColor.withOpacity(0.1),
+              AppTheme.secondaryColor.withValues(alpha:0.3),
+              AppTheme.secondaryColor.withValues(alpha:0.1),
             ],
           ),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: AppTheme.secondaryColor.withOpacity(0.5),
+            color: AppTheme.secondaryColor.withValues(alpha:0.5),
             width: 1,
           ),
         ),
@@ -559,7 +559,7 @@ class _AchievementOverlayState extends State<AchievementOverlay>
               gradient: LinearGradient(
                 colors: [
                   AppTheme.successColor,
-                  AppTheme.successColor.withOpacity(0.8),
+                  AppTheme.successColor.withValues(alpha:0.8),
                 ],
               ),
               width: double.infinity,
@@ -595,7 +595,7 @@ class _AchievementOverlayState extends State<AchievementOverlay>
   Widget _buildCloseButton() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.5),
+        color: Colors.black.withValues(alpha:0.5),
         borderRadius: BorderRadius.circular(20),
       ),
       child: IconButton(
@@ -671,7 +671,7 @@ class AchievementParticlePainter extends CustomPainter {
       final alpha = (1.0 - progress) * 0.8;
       final particleSize = 3 + (progress * 5);
       
-      paint.color = color.withOpacity(alpha);
+      paint.color = color.withValues(alpha:alpha);
       
       canvas.drawCircle(
         Offset(x, y),
@@ -772,18 +772,18 @@ class _AchievementNotificationState extends State<AchievementNotification>
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    widget.achievement.rarity.color.withOpacity(0.9),
-                    widget.achievement.rarity.color.withOpacity(0.7),
+                    widget.achievement.rarity.color.withValues(alpha:0.9),
+                    widget.achievement.rarity.color.withValues(alpha:0.7),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.3),
+                  color: Colors.white.withValues(alpha:0.3),
                   width: 1,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha:0.3),
                     blurRadius: 10,
                     offset: const Offset(0, 5),
                   ),

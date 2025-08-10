@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:puzzle_box/core/state/player_state.dart';
 import 'package:puzzle_box/core/state/ui_state.dart';
-import 'package:puzzle_box/presentation/cubit/cubit_extensions.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
 import '../../core/constants/app_constants.dart';
@@ -95,7 +95,7 @@ class _SettingsPageState extends State<SettingsPage>
           // Back button
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha:0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: IconButton(
@@ -124,7 +124,7 @@ class _SettingsPageState extends State<SettingsPage>
           // Reset button
           Container(
             decoration: BoxDecoration(
-              color: AppColors.error.withOpacity(0.2),
+              color: AppColors.error.withValues(alpha:0.2),
               borderRadius: BorderRadius.circular(12),
             ),
             child: IconButton(
@@ -374,10 +374,10 @@ class _SettingsPageState extends State<SettingsPage>
   Widget _buildSection(String title, IconData icon, List<Widget> children) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Colors.white.withValues(alpha:0.05),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withOpacity(0.1),
+          color: Colors.white.withValues(alpha:0.1),
           width: 1,
         ),
       ),
@@ -392,7 +392,7 @@ class _SettingsPageState extends State<SettingsPage>
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.2),
+                    color: AppColors.primary.withValues(alpha:0.2),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
@@ -450,16 +450,16 @@ class _SettingsPageState extends State<SettingsPage>
           subtitle,
           style: TextStyle(
             fontSize: 13,
-            color: Colors.white.withOpacity(0.7),
+            color: Colors.white.withValues(alpha:0.7),
           ),
         ),
         trailing: Switch(
           value: value,
           onChanged: onChanged,
           activeColor: AppColors.primary,
-          activeTrackColor: AppColors.primary.withOpacity(0.3),
+          activeTrackColor: AppColors.primary.withValues(alpha:0.3),
           inactiveThumbColor: Colors.grey,
-          inactiveTrackColor: Colors.grey.withOpacity(0.3),
+          inactiveTrackColor: Colors.grey.withValues(alpha:0.3),
         ),
       ),
     );
@@ -508,11 +508,11 @@ class _SettingsPageState extends State<SettingsPage>
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
               activeTrackColor: enabled ? AppColors.primary : Colors.grey,
-              inactiveTrackColor: Colors.white.withOpacity(0.3),
+              inactiveTrackColor: Colors.white.withValues(alpha:0.3),
               thumbColor: enabled ? AppColors.primary : Colors.grey,
-              overlayColor: AppColors.primary.withOpacity(0.2),
+              overlayColor: AppColors.primary.withValues(alpha:0.2),
               disabledActiveTrackColor: Colors.grey,
-              disabledInactiveTrackColor: Colors.grey.withOpacity(0.3),
+              disabledInactiveTrackColor: Colors.grey.withValues(alpha:0.3),
               disabledThumbColor: Colors.grey,
             ),
             child: Slider(
@@ -553,12 +553,12 @@ class _SettingsPageState extends State<SettingsPage>
           subtitle,
           style: TextStyle(
             fontSize: 13,
-            color: Colors.white.withOpacity(0.7),
+            color: Colors.white.withValues(alpha:0.7),
           ),
         ),
         trailing: Icon(
           Icons.arrow_forward_ios_rounded,
-          color: Colors.white.withOpacity(0.5),
+          color: Colors.white.withValues(alpha:0.5),
           size: 16,
         ),
         onTap: onTap,
@@ -621,12 +621,12 @@ class _SettingsPageState extends State<SettingsPage>
           subtitle,
           style: TextStyle(
             fontSize: 13,
-            color: AppColors.error.withOpacity(0.7),
+            color: AppColors.error.withValues(alpha:0.7),
           ),
         ),
         trailing: Icon(
           Icons.arrow_forward_ios_rounded,
-          color: AppColors.error.withOpacity(0.5),
+          color: AppColors.error.withValues(alpha:0.5),
           size: 16,
         ),
         onTap: onTap,

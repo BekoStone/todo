@@ -135,7 +135,7 @@ class AchievementUseCases {
     AchievementProgressUpdate update,
   ) async {
     try {
-      final currentStats = await _playerRepository.getPlayerStats();
+      final currentStats = await _playerRepository.loadPlayerStats();
       final achievements = await _playerRepository.getAchievements();
       
       final achievement = achievements.firstWhere(

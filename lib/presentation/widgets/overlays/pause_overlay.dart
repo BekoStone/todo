@@ -131,7 +131,7 @@ class _PauseOverlayState extends State<PauseOverlay>
         return FadeTransition(
           opacity: _fadeAnimation,
           child: Container(
-            color: Colors.black.withOpacity(0.7 * _fadeAnimation.value),
+            color: Colors.black.withValues(alpha:0.7 * _fadeAnimation.value),
             child: SlideTransition(
               position: _slideAnimation,
               child: ScaleTransition(
@@ -313,7 +313,7 @@ class _PauseOverlayState extends State<PauseOverlay>
                 text: 'Restart',
                 icon: Icons.refresh_rounded,
                 onPressed: () => _showConfirmationDialog('restart'),
-                backgroundColor: Theme.of(context).colorScheme.tertiary.withOpacity(0.2),
+                backgroundColor: Theme.of(context).colorScheme.tertiary.withValues(alpha:0.2),
                 textColor: Theme.of(context).colorScheme.tertiary,
                 height: ResponsiveUtils.getButtonSize() * 0.8,
               ),
@@ -330,7 +330,7 @@ class _PauseOverlayState extends State<PauseOverlay>
             text: 'Main Menu',
             icon: Icons.home_rounded,
             onPressed: () => _showConfirmationDialog('mainMenu'),
-            backgroundColor: Theme.of(context).colorScheme.error.withOpacity(0.2),
+            backgroundColor: Theme.of(context).colorScheme.error.withValues(alpha:0.2),
             textColor: Theme.of(context).colorScheme.error,
             height: ResponsiveUtils.getButtonSize() * 0.8,
           ),
@@ -390,7 +390,7 @@ class _PauseOverlayState extends State<PauseOverlay>
                   child: GradientButton(
                     text: actionData['confirmText'] as String,
                     onPressed: () => _executeConfirmedAction(_confirmationAction),
-                    backgroundColor: (actionData['color'] as Color).withOpacity(0.2),
+                    backgroundColor: (actionData['color'] as Color).withValues(alpha:0.2),
                     textColor: actionData['color'] as Color,
                     height: ResponsiveUtils.getButtonSize() * 0.8,
                   ),

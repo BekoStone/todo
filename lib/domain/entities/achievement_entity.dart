@@ -460,7 +460,8 @@ enum AchievementCategory {
   social,
   collection,
   time,
-  special;
+  special,
+  all;
 
   String get name => toString().split('.').last;
 
@@ -484,7 +485,9 @@ enum AchievementCategory {
         return 'Time';
       case AchievementCategory.special:
         return 'Special';
-    }
+      case AchievementCategory.all:
+        return 'All Achievements';
+          }
   }
 
   String get description {
@@ -507,6 +510,8 @@ enum AchievementCategory {
         return 'Time-based achievements';
       case AchievementCategory.special:
         return 'Special event achievements';
+      case AchievementCategory.all:
+        return 'All achievements across categories';
     }
   }
 }

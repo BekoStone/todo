@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flame/game.dart';
-import 'package:puzzle_box/core/constants/app_constants.dart';
 import 'package:puzzle_box/core/constants/game_constants.dart';
 import 'package:puzzle_box/core/state/game_state.dart';
-import 'package:puzzle_box/core/state/player_state.dart' hide PlayerState;
 import 'package:puzzle_box/core/theme/colors.dart';
 import 'package:puzzle_box/domain/entities/game_session_entity.dart';
-import 'package:puzzle_box/domain/entities/power_up_entity.dart';
 import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
 import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
@@ -17,9 +13,6 @@ import 'package:puzzle_box/core/state/ui_state.dart';
 import '../widgets/overlays/pause_overlay.dart';
 import '../widgets/overlays/game_over_overlay.dart';
 import '../widgets/game/game_hud.dart';
-import '../../core/theme/app_theme.dart';
-import '../../core/utils/responsive_utils.dart';
-import '../../core/utils/performance_utils.dart';
 import '../../injection_container.dart';
 
 /// GamePage provides the main game interface with Flame integration.
@@ -349,7 +342,7 @@ class _GamePageState extends State<GamePage>
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.7),
+          color: Colors.black.withValues(alpha:0.7),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(

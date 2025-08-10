@@ -64,11 +64,13 @@ class AnimatedCounter extends StatefulWidget {
 class _AnimatedCounterState extends State<AnimatedCounter>
     with SingleTickerProviderStateMixin {
   
+  // Animation controller - CRITICAL: Must be disposed properly
   late AnimationController _controller;
   late Animation<double> _animation;
   
   int _previousCount = 0;
   bool _hasStarted = false;
+  bool _isDisposed = false;
 
   @override
   void initState() {
@@ -78,6 +80,16 @@ class _AnimatedCounterState extends State<AnimatedCounter>
     if (widget.autoStart) {
       _startAnimation();
     }
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    
+    // CRITICAL: Dispose animation controller to prevent memory leaks
+    _controller.dispose();
+    
+    super.dispose();
   }
 
   @override
@@ -96,12 +108,6 @@ class _AnimatedCounterState extends State<AnimatedCounter>
     }
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
   void _setupAnimation() {
     _controller = AnimationController(
       duration: widget.duration,
@@ -114,13 +120,15 @@ class _AnimatedCounterState extends State<AnimatedCounter>
     );
 
     _controller.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
+      if (!_isDisposed && status == AnimationStatus.completed) {
         widget.onAnimationComplete?.call();
       }
     });
   }
 
   void _startAnimation() {
+    if (_isDisposed) return;
+    
     _hasStarted = true;
     _controller.reset();
     _controller.forward();
@@ -232,17 +240,21 @@ class _AnimatedCounterState extends State<AnimatedCounter>
 
   /// Manually start the animation
   void startAnimation() {
-    _startAnimation();
+    if (!_isDisposed) {
+      _startAnimation();
+    }
   }
 
   /// Reset the animation to the beginning
   void resetAnimation() {
-    _controller.reset();
-    _hasStarted = false;
+    if (!_isDisposed) {
+      _controller.reset();
+      _hasStarted = false;
+    }
   }
 
   /// Check if animation is currently running
-  bool get isAnimating => _controller.isAnimating;
+  bool get isAnimating => !_isDisposed && _controller.isAnimating;
 }
 
 /// Animation type enumeration
@@ -400,7 +412,7 @@ class AnimatedPercentageCounter extends StatelessWidget {
   final Duration duration;
   final TextStyle? style;
   final VoidCallback? onAnimationComplete;
-  final int decimalPlaces;
+  final bool showPercentageSign;
 
   const AnimatedPercentageCounter({
     super.key,
@@ -408,77 +420,114 @@ class AnimatedPercentageCounter extends StatelessWidget {
     this.duration = const Duration(milliseconds: 1000),
     this.style,
     this.onAnimationComplete,
-    this.decimalPlaces = 1,
+    this.showPercentageSign = true,
   });
 
   @override
   Widget build(BuildContext context) {
     return AnimatedCounter(
-      count: (percentage * math.pow(10, decimalPlaces)).round(),
+      count: percentage.round(),
       duration: duration,
       style: style,
       onAnimationComplete: onAnimationComplete,
-      curve: Curves.easeInOut,
-      decimalPlaces: decimalPlaces,
-      suffix: '%',
+      suffix: showPercentageSign ? '%' : '',
+      curve: Curves.easeInOutCubic,
       useCommaSeparator: false,
-      formatter: (value) {
-        final actualValue = value / math.pow(10, decimalPlaces);
-        return actualValue.toStringAsFixed(decimalPlaces);
-      },
+      animationType: CounterAnimationType.smooth,
     );
   }
 }
 
-/// Factory methods for common counter configurations
-extension AnimatedCounterFactory on AnimatedCounter {
-  /// Create a quick counter for UI feedback
-  static AnimatedCounter quick({
-    required int count,
-    TextStyle? style,
-    String prefix = '',
-    String suffix = '',
-  }) {
-    return AnimatedCounter(
-      count: count,
-      duration: const Duration(milliseconds: 300),
-      style: style,
-      prefix: prefix,
-      suffix: suffix,
-      curve: Curves.easeOut,
-      animationType: CounterAnimationType.smooth,
+/// Animated timer counter (for countdowns)
+class AnimatedTimerCounter extends StatelessWidget {
+  final Duration duration;
+  final Duration animationDuration;
+  final TextStyle? style;
+  final VoidCallback? onAnimationComplete;
+  final String Function(Duration)? formatter;
+
+  const AnimatedTimerCounter({
+    super.key,
+    required this.duration,
+    this.animationDuration = const Duration(milliseconds: 500),
+    this.style,
+    this.onAnimationComplete,
+    this.formatter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final formattedTime = formatter?.call(duration) ?? _defaultTimeFormatter(duration);
+    
+    return AnimatedSwitcher(
+      duration: animationDuration,
+      child: Text(
+        formattedTime,
+        key: ValueKey(formattedTime),
+        style: style,
+      ),
     );
   }
 
-  /// Create a dramatic counter for important numbers
-  static AnimatedCounter dramatic({
-    required int count,
-    TextStyle? style,
-    VoidCallback? onComplete,
-  }) {
-    return AnimatedCounter(
-      count: count,
-      duration: const Duration(milliseconds: 2000),
-      style: style,
-      onAnimationComplete: onComplete,
-      curve: Curves.elasticOut,
-      animationType: CounterAnimationType.smooth,
-    );
+  String _defaultTimeFormatter(Duration duration) {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
+}
 
-  /// Create a rolling odometer-style counter
-  static AnimatedCounter odometer({
-    required int count,
-    TextStyle? style,
-    Duration? duration,
-  }) {
-    return AnimatedCounter(
-      count: count,
-      duration: duration ?? const Duration(milliseconds: 1500),
-      style: style,
-      curve: Curves.decelerate,
-      animationType: CounterAnimationType.rolling,
-      useCommaSeparator: true,
+/// Multi-value animated counter for complex statistics
+class AnimatedMultiCounter extends StatelessWidget {
+  final List<AnimatedCounterData> counters;
+  final Duration duration;
+  final MainAxisAlignment alignment;
+  final CrossAxisAlignment crossAlignment;
+  final double spacing;
+
+  const AnimatedMultiCounter({
+    super.key,
+    required this.counters,
+    this.duration = const Duration(milliseconds: 1000),
+    this.alignment = MainAxisAlignment.center,
+    this.crossAlignment = CrossAxisAlignment.center,
+    this.spacing = 8.0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisAlignment: alignment,
+      crossAxisAlignment: crossAlignment,
+      children: counters.map((counter) {
+        return Padding(
+          padding: EdgeInsets.symmetric(vertical: spacing / 2),
+          child: AnimatedStatCounter(
+            value: counter.value,
+            label: counter.label,
+            duration: duration,
+            valueStyle: counter.valueStyle,
+            labelStyle: counter.labelStyle,
+            onAnimationComplete: counter.onComplete,
+          ),
+        );
+      }).toList(),
     );
   }
+}
+
+/// Data class for multi-counter
+class AnimatedCounterData {
+  final int value;
+  final String label;
+  final TextStyle? valueStyle;
+  final TextStyle? labelStyle;
+  final VoidCallback? onComplete;
+
+  const AnimatedCounterData({
+    required this.value,
+    required this.label,
+    this.valueStyle,
+    this.labelStyle,
+    this.onComplete,
+  });
 }

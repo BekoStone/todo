@@ -5,7 +5,6 @@ import 'package:puzzle_box/domain/entities/power_up_entity.dart';
 import '../common/animated_counter.dart';
 import '../common/gradient_button.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/responsive_utils.dart';
 
 /// GameHUD provides the heads-up display for the game interface.
@@ -296,7 +295,7 @@ class _GameHUDState extends State<GameHUD> with TickerProviderStateMixin {
         HapticFeedback.lightImpact();
         widget.onPausePressed?.call();
       },
-      backgroundColor: Theme.of(context).colorScheme.surface.withOpacity(0.8),
+      backgroundColor: Theme.of(context).colorScheme.surface.withValues(alpha:0.8),
       textColor: Theme.of(context).colorScheme.onSurface,
       width: ResponsiveUtils.getHUDElementSize(),
     );
@@ -350,7 +349,7 @@ class _GameHUDState extends State<GameHUD> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Theme.of(context).gameColors.hudBackground.withOpacity(0.8),
+        color: Theme.of(context).gameColors.hudBackground.withValues(alpha:0.8),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -402,7 +401,7 @@ class _GameHUDState extends State<GameHUD> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Theme.of(context).gameColors.hudBackground.withOpacity(0.8),
+        color: Theme.of(context).gameColors.hudBackground.withValues(alpha:0.8),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -426,7 +425,7 @@ class _GameHUDState extends State<GameHUD> with TickerProviderStateMixin {
       margin: const EdgeInsets.symmetric(vertical: 2),
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: block.color.withOpacity(0.8),
+        color: block.color.withValues(alpha:0.8),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
@@ -523,7 +522,7 @@ class _GameHUDState extends State<GameHUD> with TickerProviderStateMixin {
               HapticFeedback.lightImpact();
               widget.onUndoPressed?.call();
             },
-            backgroundColor: Theme.of(context).colorScheme.secondary.withOpacity(0.8),
+            backgroundColor: Theme.of(context).colorScheme.secondary.withValues(alpha:0.8),
             textColor: Colors.white,
             width: double.infinity,
           ),
@@ -563,7 +562,7 @@ class _GameHUDState extends State<GameHUD> with TickerProviderStateMixin {
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Theme.of(context).colorScheme.tertiary.withOpacity(0.5),
+                    color: Theme.of(context).colorScheme.tertiary.withValues(alpha:0.5),
                     blurRadius: 10,
                     spreadRadius: 2,
                   ),
