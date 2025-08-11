@@ -4,11 +4,10 @@ import 'package:flame/effects.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:puzzle_box/domain/entities/power_up_entity.dart';
-import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
-import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
+import 'package:puzzle_box/presentation/cubit/game_cubit.dart';
+import 'package:puzzle_box/presentation/cubit/player_cubit.dart';
 
 import '../../../core/constants/game_constants.dart';
-import '../../../core/utils/performance_utils.dart' hide Vector2;
 import '../../../core/services/audio_service.dart';
 import '../../../injection_container.dart';
 import '../components/game_world.dart';

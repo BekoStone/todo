@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:puzzle_box/core/state/ui_state.dart';
-import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
-import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
-import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
+import 'package:puzzle_box/presentation/cubit/game_cubit.dart';
+import 'package:puzzle_box/presentation/cubit/player_cubit.dart';
+import 'package:puzzle_box/presentation/cubit/ui_cubit.dart';
 import 'package:puzzle_box/core/utils/responsive_utils.dart';
 import 'package:puzzle_box/presentation/navigation/app_navigator.dart';
 import 'injection_container.dart' as di;
-import 'core/theme/app_theme.dart' hide AppTheme;
 import 'core/constants/app_constants.dart';
 import 'core/utils/performance_utils.dart';
 

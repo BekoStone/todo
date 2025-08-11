@@ -1,7 +1,7 @@
 // File: lib/presentation/widgets/common/responsive_layout.dart
 
 import 'package:flutter/material.dart';
-import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
+import 'package:puzzle_box/presentation/cubit/ui_cubit.dart';
 import '../../../core/utils/responsive_utils.dart';
 
 /// A responsive layout widget that adapts its child based on screen size

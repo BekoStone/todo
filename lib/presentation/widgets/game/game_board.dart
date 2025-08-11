@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:puzzle_box/core/state/game_state.dart';
 import 'package:puzzle_box/domain/entities/block_entity.dart';
-import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
+import 'package:puzzle_box/presentation/cubit/game_cubit.dart';
 import 'dart:math' as math;
 import '../../flame/box_hooks_game.dart';
 import '../../flame/components/block_component.dart' as flame_block;

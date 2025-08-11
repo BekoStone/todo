@@ -9,8 +9,8 @@ import 'package:puzzle_box/core/state/ui_state.dart';
 import 'package:puzzle_box/domain/entities/achievement_entity.dart' hide Achievement;
 import 'package:puzzle_box/domain/entities/game_session_entity.dart';
 import 'package:puzzle_box/domain/entities/player_stats_entity.dart';
-import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
-import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
+import 'package:puzzle_box/presentation/cubit/player_cubit.dart';
+import 'package:puzzle_box/presentation/cubit/ui_cubit.dart';
 
 /// Extensions for GameState to add helper methods
 extension GameStateExtensions on GameState {

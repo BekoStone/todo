@@ -2,12 +2,11 @@
 
 import 'package:get_it/get_it.dart';
 import 'package:puzzle_box/core/state/game_state.dart';
-import 'package:puzzle_box/domain/usecases/achievement_usecases_dart.dart';
-import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
-import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
-import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
+import 'package:puzzle_box/domain/usecases/achievement_usecases.dart';
+import 'package:puzzle_box/presentation/cubit/game_cubit.dart';
+import 'package:puzzle_box/presentation/cubit/player_cubit.dart';
+import 'package:puzzle_box/presentation/cubit/ui_cubit.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart';
 import 'core/services/audio_service.dart';
 import 'core/services/storage_service.dart';
 import 'data/datasources/local_storage_datasource.dart';

@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:puzzle_box/domain/entities/achievement_entity.dart';
 import 'package:puzzle_box/core/state/player_state.dart';
-import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
+import 'package:puzzle_box/presentation/cubit/player_cubit.dart';
 import '../widgets/common/animated_counter.dart';
-import '../widgets/overlays/achievement_overlay.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/theme/colors.dart';
 import '../../core/utils/responsive_utils.dart';
 

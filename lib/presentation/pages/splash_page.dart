@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:puzzle_box/core/state/ui_state.dart';
-import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
+import 'package:puzzle_box/presentation/cubit/ui_cubit.dart';
 import '../widgets/common/animated_counter.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/colors.dart';

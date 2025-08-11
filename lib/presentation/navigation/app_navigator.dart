@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:puzzle_box/core/state/ui_state.dart';
-import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
-import 'package:puzzle_box/presentation/pages/splash_page_dart.dart';
-import 'package:puzzle_box/presentation/pages/main_menu_page_dart.dart';
-import 'package:puzzle_box/presentation/pages/game_page_dart.dart';
+import 'package:puzzle_box/presentation/cubit/ui_cubit.dart';
+import 'package:puzzle_box/presentation/pages/splash_page.dart';
+import 'package:puzzle_box/presentation/pages/main_menu_page.dart';
+import 'package:puzzle_box/presentation/pages/game_page.dart';
 import 'package:puzzle_box/presentation/pages/settings_page.dart';
 import '../../core/utils/performance_utils.dart';
 

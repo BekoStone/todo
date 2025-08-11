@@ -1,10 +1,7 @@
-import 'dart:math' as math;
 import 'package:flame/components.dart';
-import 'package:flutter/material.dart';
 import 'package:puzzle_box/core/constants/game_constants.dart';
 import 'package:puzzle_box/domain/entities/block_entity.dart';
-import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
-import '../../../core/utils/performance_utils.dart' hide Vector2;
+import 'package:puzzle_box/presentation/cubit/game_cubit.dart';
 import '../components/game_world.dart';
 
 /// InputSystem handles all user input for the game including touch, drag, and tap gestures.

@@ -1,8 +1,8 @@
 import 'dart:math' as math;
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
-import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
-import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
+import 'package:puzzle_box/presentation/cubit/game_cubit.dart';
+import 'package:puzzle_box/presentation/cubit/player_cubit.dart';
 
 import '../../../core/constants/game_constants.dart';
 import '../../../core/utils/performance_utils.dart';

@@ -2,12 +2,11 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:developer' as developer;
 import 'package:bloc/bloc.dart';
-import 'package:puzzle_box/core/constants/app_constants.dart';
 import 'package:puzzle_box/core/constants/game_constants.dart';
 import 'package:puzzle_box/core/state/game_state.dart';
 import 'package:puzzle_box/domain/entities/block_entity.dart';
 import 'package:puzzle_box/domain/entities/game_session_entity.dart';
-import 'package:puzzle_box/domain/usecases/achievement_usecases_dart.dart';
+import 'package:puzzle_box/domain/usecases/achievement_usecases.dart';
 import 'package:puzzle_box/domain/usecases/game_usecases.dart';
 
 /// GameCubit manages the core game state and logic coordination.

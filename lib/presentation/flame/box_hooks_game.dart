@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:developer' as developer;
-import 'dart:math' as math;
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
 import 'package:flame/events.dart';
@@ -8,9 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:puzzle_box/core/state/player_state.dart';
 import 'package:puzzle_box/core/state/ui_state.dart';
 import 'package:puzzle_box/domain/entities/achievement_entity.dart';
-import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
-import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
-import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
+import 'package:puzzle_box/presentation/cubit/game_cubit.dart';
+import 'package:puzzle_box/presentation/cubit/player_cubit.dart';
+import 'package:puzzle_box/presentation/cubit/ui_cubit.dart';
 import 'package:puzzle_box/presentation/flame/components/particle_component.dart';
 /// Import equatable for GameConfig
 import 'package:equatable/equatable.dart';
@@ -23,7 +21,6 @@ import '../../injection_container.dart';
 import 'components/game_world.dart';
 import 'systems/input_system.dart';
 import 'systems/scoring_system.dart';
-import 'systems/power_up_system.dart' hide Timer;
 
 /// Configuration class for responsive game design
 class GameConfig extends Equatable {

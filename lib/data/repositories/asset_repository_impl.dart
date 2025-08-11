@@ -2,8 +2,8 @@
 
 import 'dart:async';
 import 'dart:developer' as developer;
-import 'package:puzzle_box/core/errors/exceptions_dart.dart';
-import 'package:puzzle_box/data/datasources/asset_datasource_dart.dart' hide AssetLoadingProgress;
+import 'package:puzzle_box/core/errors/exceptions.dart';
+import 'package:puzzle_box/data/datasources/asset_datasource.dart' hide AssetLoadingProgress;
 import 'package:puzzle_box/domain/repositories/asset_repository_dart.dart';
 
 

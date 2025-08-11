@@ -4,13 +4,10 @@
 import 'dart:developer' as developer;
 import 'package:puzzle_box/core/state/game_state.dart';
 import 'package:puzzle_box/core/state/player_state.dart';
-import 'package:puzzle_box/core/state/state_extensions.dart';
 import 'package:puzzle_box/core/state/ui_state.dart';
-import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
-import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
-import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
-import 'package:puzzle_box/core/constants/app_constants.dart';
-import 'package:puzzle_box/presentation/flame/box_hooks_game.dart' show GameStateStatus;
+import 'package:puzzle_box/presentation/cubit/game_cubit.dart';
+import 'package:puzzle_box/presentation/cubit/player_cubit.dart';
+import 'package:puzzle_box/presentation/cubit/ui_cubit.dart';
 
 /// Extension for GameCubit to add missing methods
 extension GameCubitMethods on GameCubit {

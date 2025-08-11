@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
-import 'package:puzzle_box/app_dart.dart';
+import 'package:puzzle_box/app.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'injection_container.dart' as di;
 import 'core/constants/app_constants.dart';

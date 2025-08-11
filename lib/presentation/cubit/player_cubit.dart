@@ -2,12 +2,10 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:developer' as developer;
 import 'package:bloc/bloc.dart';
-import 'package:puzzle_box/core/constants/app_constants.dart';
 import 'package:puzzle_box/core/state/player_state.dart';
 import 'package:puzzle_box/domain/entities/achievement_entity.dart';
 import 'package:puzzle_box/domain/entities/player_stats_entity.dart';
-import 'package:puzzle_box/domain/entities/power_up_entity.dart';
-import 'package:puzzle_box/domain/usecases/achievement_usecases_dart.dart';
+import 'package:puzzle_box/domain/usecases/achievement_usecases.dart';
 import 'package:puzzle_box/domain/usecases/player_usecases.dart';
 
 /// PlayerCubit manages player data, statistics, achievements, and progression.

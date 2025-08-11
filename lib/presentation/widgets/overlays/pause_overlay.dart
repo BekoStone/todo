@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:puzzle_box/presentation/cubit/ui_cubit_dart.dart';
+import 'package:puzzle_box/presentation/cubit/ui_cubit.dart';
 import '../common/gradient_button.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/responsive_utils.dart';

@@ -3,7 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
 import 'package:puzzle_box/core/state/player_state.dart';
 import 'package:puzzle_box/domain/entities/power_up_entity.dart';
-import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
+import 'package:puzzle_box/presentation/cubit/player_cubit.dart';
 import '../common/gradient_button.dart';
 import '../common/animated_counter.dart';
 import '../../../core/theme/app_theme.dart';

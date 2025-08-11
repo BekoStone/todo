@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flame/components.dart';
 import 'package:flame/effects.dart';
 import 'package:flutter/material.dart';
@@ -6,12 +5,11 @@ import 'package:puzzle_box/core/state/game_state.dart';
 import 'package:puzzle_box/domain/entities/game_session_entity.dart';
 import 'package:puzzle_box/domain/entities/player_stats_entity.dart';
 import 'package:puzzle_box/domain/entities/achievement_entity.dart';
-import 'package:puzzle_box/presentation/cubit/game_cubit_dart.dart';
-import 'package:puzzle_box/presentation/cubit/player_cubit_dart.dart';
+import 'package:puzzle_box/presentation/cubit/game_cubit.dart';
+import 'package:puzzle_box/presentation/cubit/player_cubit.dart';
 
 import '../../../core/theme/colors.dart';
 import '../../../core/constants/app_constants.dart';
-import '../../../core/utils/performance_utils.dart' hide Vector2;
 import '../box_hooks_game.dart';
 import 'grid_component.dart';
 import 'block_component.dart';

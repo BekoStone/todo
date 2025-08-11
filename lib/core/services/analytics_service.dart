@@ -3,7 +3,6 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 
-import 'package:puzzle_box/core/errors/exceptions_dart.dart';
 
 /// Analytics events for tracking user behavior
 enum AnalyticsEvent {
